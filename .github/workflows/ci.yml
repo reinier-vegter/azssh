@@ -20,3 +20,10 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: CGO_ENABLED=0 go build -trimpath -o azssh ./cmd/azssh
+      - name: Run binary in supported Linux containers
+        run: |
+          for image in ubuntu:22.04 registry.access.redhat.com/ubi8/ubi-minimal; do
+            docker run --rm \
+              --mount "type=bind,src=${PWD}/azssh,dst=/usr/local/bin/azssh,readonly" \
+              "$image" /usr/local/bin/azssh --version
+          done
