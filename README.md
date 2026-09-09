@@ -1,5 +1,13 @@
 # azssh
 
+[![CI](https://github.com/reinier-vegter/azssh/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/reinier-vegter/azssh/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/reinier-vegter/azssh)](https://github.com/reinier-vegter/azssh/releases/latest)
+[![Coverage](https://codecov.io/gh/reinier-vegter/azssh/graph/badge.svg)](https://app.codecov.io/gh/reinier-vegter/azssh)
+[![License](https://img.shields.io/github/license/reinier-vegter/azssh)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/reinier-vegter/azssh)](go.mod)
+[![Platforms](https://img.shields.io/badge/platform-Linux%20amd64%20%7C%20arm64-1f6feb)](https://github.com/reinier-vegter/azssh/releases/latest)
+[![AI assisted](https://img.shields.io/badge/development-AI--assisted-6b4fbb)](#development)
+
 `azssh` is a terminal UI for quickly finding Linux Azure virtual machines that
 can be reached through Azure Bastion, then starting the native Azure CLI SSH
 connection.
@@ -81,3 +89,10 @@ CGO_ENABLED=0 go build -o azssh ./cmd/azssh
 Pull requests and pushes are checked with unit tests, `go vet`, and a static
 Linux build. Tagged releases publish gzip-compressed standalone binaries for
 Linux `amd64` and `arm64`.
+
+This project is AI-assisted. Maintainers review, test, and take responsibility
+for all changes.
+
+## License
+
+Released under the [MIT License](LICENSE).

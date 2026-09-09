@@ -17,7 +17,11 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go mod download
-      - run: go test ./...
+      - run: go test -coverprofile=coverage.out ./...
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
       - run: go vet ./...
       - run: CGO_ENABLED=0 go build -trimpath -o azssh ./cmd/azssh
       - name: Run binary in supported Linux containers
