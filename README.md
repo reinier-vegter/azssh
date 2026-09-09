@@ -5,7 +5,7 @@
 [![Coverage](https://codecov.io/gh/reinier-vegter/azssh/graph/badge.svg)](https://app.codecov.io/gh/reinier-vegter/azssh)
 [![License](https://img.shields.io/github/license/reinier-vegter/azssh)](LICENSE)
 [![Go version](https://img.shields.io/github/go-mod/go-version/reinier-vegter/azssh)](go.mod)
-[![Platforms](https://img.shields.io/badge/platform-Linux%20amd64%20%7C%20arm64-1f6feb)](https://github.com/reinier-vegter/azssh/releases/latest)
+[![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20(amd64%2C%20arm64)-1f6feb)](https://github.com/reinier-vegter/azssh/releases/latest)
 [![AI assisted](https://img.shields.io/badge/development-AI--assisted-6b4fbb)](#development)
 
 `azssh` is a terminal UI for quickly finding Linux Azure virtual machines that
@@ -18,7 +18,7 @@ the finder is available while refresh runs in the background.
 
 ## Requirements
 
-- Linux on `amd64` or `arm64`
+- Linux or macOS on `amd64` or `arm64`
 - Azure CLI with the Bastion extension available
 - An authenticated Azure CLI session: `az login`
 - Azure Bastion Standard or Premium hosts with native client/tunneling enabled
@@ -29,16 +29,17 @@ authentication requirements remain enforced by Azure Bastion and the Azure CLI.
 
 ## Install
 
-Download the architecture-appropriate `.gz` binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest), then decompress and install it:
+Download the OS- and architecture-appropriate `.gz` binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest), then decompress and install it:
 
 ```sh
-gunzip azssh_v<version>_linux_amd64.gz
-chmod +x azssh_v<version>_linux_amd64
-sudo install -m 0755 azssh_v<version>_linux_amd64 /usr/local/bin/azssh
+gunzip azssh_v<version>_<os>_<arch>.gz
+chmod +x azssh_v<version>_<os>_<arch>
+sudo install -m 0755 azssh_v<version>_<os>_<arch> /usr/local/bin/azssh
 ```
 
-Use the `linux_arm64` release asset for 64-bit ARM systems. Replace the example
-version with the downloaded release version.
+Use `linux_amd64` or `linux_arm64` on Linux. Use `darwin_amd64` on Intel Macs
+or `darwin_arm64` on Apple silicon. Replace the placeholders with the downloaded
+release version, OS, and architecture.
 
 ## Usage
 
@@ -88,7 +89,7 @@ CGO_ENABLED=0 go build -o azssh ./cmd/azssh
 
 Pull requests and pushes are checked with unit tests, `go vet`, and a static
 Linux build. Tagged releases publish gzip-compressed standalone binaries for
-Linux `amd64` and `arm64`.
+Linux and macOS on `amd64` and `arm64`.
 
 This project is AI-assisted. Maintainers review, test, and take responsibility
 for all changes.

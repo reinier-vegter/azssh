@@ -24,6 +24,11 @@ jobs:
           files: coverage.out
       - run: go vet ./...
       - run: CGO_ENABLED=0 go build -trimpath -o azssh ./cmd/azssh
+      - name: Cross-build macOS binaries
+        run: |
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath -o "azssh_darwin_${arch}" ./cmd/azssh
+          done
       - name: Run binary in supported Linux containers
         run: |
           for image in ubuntu:22.04 registry.access.redhat.com/ubi8/ubi-minimal; do
