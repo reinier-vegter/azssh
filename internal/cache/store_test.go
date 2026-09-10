@@ -51,6 +51,24 @@ func TestVMInventoryAndPreferencesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckRoundTripAndFreshness(t *testing.T) {
+	store := testStore(t)
+	checkedAt := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	check := UpdateCheck{CheckedAt: checkedAt, LatestVersion: "v0.0.2"}
+	if err := store.SaveUpdateCheck(check); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.LoadUpdateCheck(); err != nil || !reflect.DeepEqual(got, check) {
+		t.Fatalf("loaded update check = %#v, %v", got, err)
+	}
+	if !IsUpdateCheckFresh(check, checkedAt.Add(time.Hour)) {
+		t.Fatal("check should be fresh at the one-hour boundary")
+	}
+	if IsUpdateCheckFresh(check, checkedAt.Add(time.Hour+time.Nanosecond)) {
+		t.Fatal("check should be stale after one hour")
+	}
+}
+
 func TestLoadDistinguishesNotFoundAndUnsupportedSchema(t *testing.T) {
 	store := testStore(t)
 	if _, err := store.LoadTopology(); !errors.Is(err, ErrNotFound) {

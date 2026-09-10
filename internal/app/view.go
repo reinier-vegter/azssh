@@ -14,6 +14,7 @@ var (
 	favoriteStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	mutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	updateStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("208")).Bold(true)
 	panelStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
 )
 
@@ -30,9 +31,20 @@ func (m Model) View() tea.View {
 	default:
 		content = m.mainScreen()
 	}
+	if m.availableUpdate != "" {
+		content = m.updateBanner() + "\n" + content
+	}
 	result := tea.NewView(content)
 	result.AltScreen = m.config.AltScreen
 	return result
+}
+
+func (m Model) updateBanner() string {
+	banner := "Update available: " + m.availableUpdate + " (current: " + m.config.Version + ")  https://github.com/reinier-vegter/azssh/releases"
+	if m.width > 0 {
+		return updateStyle.Width(m.width).Render(banner)
+	}
+	return updateStyle.Render(banner)
 }
 
 func (m Model) mainScreen() string {
@@ -174,7 +186,11 @@ func (m *Model) resizeList() {
 	if m.width < 86 {
 		listWidth = max(30, m.width-6)
 	}
-	m.vmList.SetSize(listWidth, max(8, m.height-8))
+	bannerHeight := 0
+	if m.availableUpdate != "" {
+		bannerHeight = 1
+	}
+	m.vmList.SetSize(listWidth, max(8, m.height-8-bannerHeight))
 }
 
 func displayValue(value string) string {

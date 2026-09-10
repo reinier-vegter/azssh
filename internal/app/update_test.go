@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"azssh/internal/cache"
@@ -91,5 +92,17 @@ func TestTargetDelegateFavoriteBoundary(t *testing.T) {
 	}
 	if delegate.isFavoriteBoundary(items, 1) {
 		t.Fatal("did not expect a separator after a non-favorite")
+	}
+}
+
+func TestUpdateCheckShowsBanner(t *testing.T) {
+	model := Model{config: Config{Version: "v0.0.1"}, width: 100}
+	updated, _ := model.Update(updateCheckSucceededMsg{latestVersion: "v0.0.2"})
+	result := updated.(Model)
+	if got := result.availableUpdate; got != "v0.0.2" {
+		t.Fatalf("available update = %q", got)
+	}
+	if !strings.Contains(result.updateBanner(), "https://github.com/reinier-vegter/azssh/releases") {
+		t.Fatal("update banner does not include the releases URL")
 	}
 }

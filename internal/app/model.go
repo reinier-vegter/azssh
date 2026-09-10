@@ -30,6 +30,8 @@ const (
 type Config struct {
 	Authentication shell.Authentication
 	AltScreen      bool
+	Version        string
+	UpdateStore    *cache.Store
 }
 
 // Model is the root Bubble Tea application state.
@@ -50,12 +52,13 @@ type Model struct {
 	hiddenSubscriptionIDs map[string]bool
 	favoriteVMIDs         map[string]bool
 
-	vmList      list.Model
-	spinner     spinner.Model
-	loading     bool
-	status      string
-	lastRefresh time.Time
-	useUnicode  bool
+	vmList          list.Model
+	spinner         spinner.Model
+	loading         bool
+	status          string
+	lastRefresh     time.Time
+	useUnicode      bool
+	availableUpdate string
 
 	filterIndex int
 	filterDraft map[string]bool

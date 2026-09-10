@@ -36,6 +36,10 @@ func main() {
 	if err != nil {
 		exitf("could not initialize local cache: %v", err)
 	}
+	updateStore, err := cache.NewStore("updates")
+	if err != nil {
+		exitf("could not initialize update cache: %v", err)
+	}
 	client, err := azure.NewClient()
 	if err != nil {
 		exitf("Azure CLI authentication is unavailable; run az login: %v", err)
@@ -46,7 +50,7 @@ func main() {
 	preferences, _ := store.LoadPreferences()
 	model := app.NewModel(client, store, app.Config{Authentication: shell.Authentication{
 		Type: *authType, Username: *username, SSHKeyPath: *sshKey,
-	}, AltScreen: !*noAltScreen}, topology, vmInventory, preferences)
+	}, AltScreen: !*noAltScreen, Version: version, UpdateStore: updateStore}, topology, vmInventory, preferences)
 	finalModel, err := tea.NewProgram(model).Run()
 	if err != nil {
 		exitf("TUI failed: %v", err)

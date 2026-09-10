@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const topologyTTL = 7 * 24 * time.Hour
+const (
+	topologyTTL    = 7 * 24 * time.Hour
+	updateCheckTTL = time.Hour
+)
 
 var (
 	// ErrNotFound distinguishes an absent cache file from an unreadable one.
@@ -89,9 +92,31 @@ func (s *Store) SaveVMInventory(snapshot VMInventorySnapshot) error {
 	return s.save("vm-inventory.json", vmInventoryEnvelope{SchemaVersion: schemaVersion, Data: snapshot})
 }
 
+// LoadUpdateCheck reads the most recent release lookup.
+func (s *Store) LoadUpdateCheck() (UpdateCheck, error) {
+	var envelope updateCheckEnvelope
+	if err := s.load("update-check.json", &envelope); err != nil {
+		return UpdateCheck{}, err
+	}
+	if envelope.SchemaVersion != schemaVersion {
+		return UpdateCheck{}, fmt.Errorf("update check: %w: %d", ErrUnsupportedSchema, envelope.SchemaVersion)
+	}
+	return envelope.Data, nil
+}
+
+// SaveUpdateCheck atomically saves the most recent release lookup.
+func (s *Store) SaveUpdateCheck(check UpdateCheck) error {
+	return s.save("update-check.json", updateCheckEnvelope{SchemaVersion: schemaVersion, Data: check})
+}
+
 // IsTopologyFresh reports whether snapshot was fetched within the topology TTL.
 func IsTopologyFresh(snapshot TopologySnapshot, now time.Time) bool {
 	return !snapshot.FetchedAt.IsZero() && !snapshot.FetchedAt.After(now) && now.Sub(snapshot.FetchedAt) <= topologyTTL
+}
+
+// IsUpdateCheckFresh reports whether a release lookup was attempted within an hour.
+func IsUpdateCheckFresh(check UpdateCheck, now time.Time) bool {
+	return !check.CheckedAt.IsZero() && !check.CheckedAt.After(now) && now.Sub(check.CheckedAt) <= updateCheckTTL
 }
 
 func (s *Store) load(name string, destination any) error {

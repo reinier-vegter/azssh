@@ -18,6 +18,10 @@ type shellFinishedMsg struct {
 	err error
 }
 
+type updateCheckSucceededMsg struct {
+	latestVersion string
+}
+
 type targetsLoadedMsg struct {
 	targets []inventory.EligibleTarget
 }

@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"azssh/internal/inventory"
+	"azssh/internal/release"
 	"azssh/internal/shell"
 
 	"charm.land/bubbles/v2/key"
@@ -16,7 +19,7 @@ import (
 // Init begins cache validation after the first view is rendered.
 func (m Model) Init() tea.Cmd {
 	m.loading = true
-	return tea.Batch(m.refreshCmd(), m.spinner.Tick)
+	return tea.Batch(m.refreshCmd(), m.updateCheckCmd(), m.spinner.Tick)
 }
 
 // Update handles terminal input, background inventory refreshes, and shell
@@ -58,6 +61,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Shell closed"
 		}
 		return m, nil
+	case updateCheckSucceededMsg:
+		m.availableUpdate = msg.latestVersion
+		m.resizeList()
+		return m, nil
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	case spinner.TickMsg:
@@ -74,6 +81,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+func (m Model) updateCheckCmd() tea.Cmd {
+	version := m.config.Version
+	store := m.config.UpdateStore
+	return func() tea.Msg {
+		if store == nil {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		result, err := release.CheckLatest(ctx, version, store)
+		if err != nil || !result.Available {
+			return nil
+		}
+		return updateCheckSucceededMsg{latestVersion: result.LatestVersion}
+	}
 }
 
 func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

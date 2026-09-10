@@ -39,3 +39,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${{ github.ref_name }}" dist/*.gz dist/SHA256SUMS --generate-notes
+      - name: Update README install version
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          git fetch origin main
+          git checkout main
+          perl -0pi -e 's/azssh_v[^_]+_(linux|darwin)_(amd64|arm64)/"azssh_$ENV{VERSION}_$1_$2"/ge' README.md
+          if git diff --quiet -- README.md; then
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -am "Update README for ${VERSION}"
+          git push origin HEAD:main

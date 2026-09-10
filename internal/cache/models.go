@@ -25,6 +25,13 @@ type VMInventorySnapshot struct {
 	Targets         []inventory.EligibleTarget
 }
 
+// UpdateCheck records the most recent GitHub release lookup shared by all
+// Azure account namespaces on this machine.
+type UpdateCheck struct {
+	CheckedAt     time.Time `json:"checkedAt"`
+	LatestVersion string    `json:"latestVersion"`
+}
+
 type topologyEnvelope struct {
 	SchemaVersion int              `json:"schemaVersion"`
 	Data          TopologySnapshot `json:"data"`
@@ -33,4 +40,9 @@ type topologyEnvelope struct {
 type vmInventoryEnvelope struct {
 	SchemaVersion int                 `json:"schemaVersion"`
 	Data          VMInventorySnapshot `json:"data"`
+}
+
+type updateCheckEnvelope struct {
+	SchemaVersion int         `json:"schemaVersion"`
+	Data          UpdateCheck `json:"data"`
 }
