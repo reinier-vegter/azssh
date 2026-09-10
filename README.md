@@ -37,9 +37,9 @@ authentication requirements remain enforced by Azure Bastion and the Azure CLI.
 Download the OS- and architecture-appropriate `.gz` binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest), then decompress and install it:
 
 ```sh
-gunzip azssh_v<version>_<os>_<arch>.gz
-chmod +x azssh_v<version>_<os>_<arch>
-sudo install -m 0755 azssh_v<version>_<os>_<arch> /usr/local/bin/azssh
+gunzip azssh_v0.0.4_<os>_<arch>.gz
+chmod +x azssh_v0.0.4_<os>_<arch>
+sudo install -m 0755 azssh_v0.0.4_<os>_<arch> /usr/local/bin/azssh
 ```
 
 Use `linux_amd64` or `linux_arm64` on Linux. Use `darwin_amd64` on Intel Macs
