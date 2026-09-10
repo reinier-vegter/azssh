@@ -45,7 +45,7 @@ jobs:
         run: |
           git fetch origin main
           git checkout main
-          perl -0pi -e 's/azssh_v[^_]+_(linux|darwin)_(amd64|arm64)/"azssh_$ENV{VERSION}_$1_$2"/ge' README.md
+          perl -0pi -e 's/azssh_v(?:<[^>]+>|[^_[:space:]]+)/"azssh_$ENV{VERSION}"/ge' README.md
           if git diff --quiet -- README.md; then
             exit 0
           fi
