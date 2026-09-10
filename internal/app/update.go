@@ -23,6 +23,14 @@ func (m Model) Init() tea.Cmd {
 // completion messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.EnvMsg:
+		useUnicode := unicodeFromEnv(msg.Getenv)
+		if useUnicode != m.useUnicode {
+			m.useUnicode = useUnicode
+			m.vmList.SetDelegate(newTargetDelegate(useUnicode))
+			m.rebuildList()
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeList()
@@ -95,6 +103,12 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if key.Matches(msg, m.keys.FilterSubscriptions) {
 		m.openSubscriptionFilter()
+		return m, nil
+	}
+	if key.Matches(msg, m.keys.Favorite) {
+		if err := m.toggleFavorite(); err != nil {
+			m.status = "Save favorites failed: " + err.Error()
+		}
 		return m, nil
 	}
 	if key.Matches(msg, m.keys.Refresh) && !m.loading {

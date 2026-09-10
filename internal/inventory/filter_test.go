@@ -17,6 +17,13 @@ func TestFilterTargets(t *testing.T) {
 	if len(matched) != 1 || matched[0].VM.ID != "two" {
 		t.Fatalf("Bastion query should match target: %#v", matched)
 	}
+	matched = FilterTargets(targets, nil, "data west")
+	if len(matched) != 1 || matched[0].VM.ID != "two" {
+		t.Fatalf("every query term should match: %#v", matched)
+	}
+	if matched := FilterTargets(targets, nil, "data east"); len(matched) != 0 {
+		t.Fatalf("targets missing a query term should be excluded: %#v", matched)
+	}
 	if visible := FilterTargets(targets, nil, ""); len(visible) != 2 {
 		t.Fatalf("Windows targets should be excluded from cached inventory: %#v", visible)
 	}

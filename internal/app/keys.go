@@ -4,6 +4,7 @@ import "charm.land/bubbles/v2/key"
 
 type keyMap struct {
 	FilterSubscriptions key.Binding
+	Favorite            key.Binding
 	Help                key.Binding
 	Refresh             key.Binding
 	Route               key.Binding
@@ -18,6 +19,7 @@ type keyMap struct {
 func defaultKeyMap() keyMap {
 	return keyMap{
 		FilterSubscriptions: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "filters")),
+		Favorite:            key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "favorite")),
 		Help:                key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Refresh:             key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		Route:               key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "route")),

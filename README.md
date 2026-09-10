@@ -67,6 +67,7 @@ Key bindings:
 | `enter` | Connect to the selected VM, or choose its Bastion route |
 | `shift+enter` | Exit the TUI and review the exact command before running it |
 | `/` | Search VMs, subscriptions, resource groups, and Bastions |
+| `x` | Toggle the selected VM as a favorite; favorites appear first |
 | `f` | Filter subscriptions |
 | `b` | Choose a Bastion route when multiple routes are available |
 | `r` | Refresh Azure inventory |
@@ -77,7 +78,7 @@ Key bindings:
 
 Cache files are stored under the operating system user cache directory in an
 account-specific `azssh` directory. The cache contains inventory metadata and
-subscription preferences only. It never stores Azure access tokens, passwords,
+subscription and favorite preferences only. It never stores Azure access tokens, passwords,
 or SSH private keys.
 
 ## Build from Source

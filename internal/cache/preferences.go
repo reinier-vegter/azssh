@@ -3,6 +3,7 @@ package cache
 // Preferences contains user choices that are independent of Azure inventory.
 type Preferences struct {
 	HiddenSubscriptionIDs []string `json:"hiddenSubscriptionIDs"`
+	FavoriteVMIDs         []string `json:"favoriteVMIDs"`
 }
 
 type preferencesEnvelope struct {

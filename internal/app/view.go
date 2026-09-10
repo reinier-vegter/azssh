@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	accentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
-	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	panelStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
+	accentStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+	favoriteStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	mutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	panelStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
 )
 
 // View renders the active application screen.
@@ -42,7 +43,7 @@ func (m Model) mainScreen() string {
 	if m.width > 0 && m.width < 86 {
 		content = lipgloss.JoinVertical(lipgloss.Left, panelStyle.Render(left), panelStyle.Render(right))
 	}
-	footer := mutedStyle.Render("enter connect  shift+enter review  / search  f filters  ? help  r refresh  q quit")
+	footer := mutedStyle.Render("enter connect  shift+enter review  / search  x favorite  f filters  ? help  r refresh  q quit")
 	if m.status != "" {
 		footer = footer + "\n" + m.statusStyle().Render(m.status)
 	}
@@ -125,6 +126,7 @@ func (m Model) helpView() string {
 		accentStyle.Render("Navigation"),
 		"up/k, down/j     Move selection",
 		"/                Focus VM search",
+		"x                Toggle selected VM favorite",
 		"f                Filter subscriptions",
 		"?                Open or close help",
 		"r                Refresh inventory",

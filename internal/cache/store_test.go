@@ -42,7 +42,7 @@ func TestVMInventoryAndPreferencesRoundTrip(t *testing.T) {
 		t.Fatalf("loaded VM inventory = %#v, %v", got, err)
 	}
 
-	preferences := Preferences{HiddenSubscriptionIDs: []string{"sub-2"}}
+	preferences := Preferences{HiddenSubscriptionIDs: []string{"sub-2"}, FavoriteVMIDs: []string{"vm-2"}}
 	if err := store.SavePreferences(preferences); err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@
 package app
 
 import (
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -47,12 +48,14 @@ type Model struct {
 	targets               []inventory.EligibleTarget
 	subscriptions         []inventory.Subscription
 	hiddenSubscriptionIDs map[string]bool
+	favoriteVMIDs         map[string]bool
 
 	vmList      list.Model
 	spinner     spinner.Model
 	loading     bool
 	status      string
 	lastRefresh time.Time
+	useUnicode  bool
 
 	filterIndex int
 	filterDraft map[string]bool
@@ -70,17 +73,15 @@ func (m Model) ReviewCommand() []string {
 
 // NewModel starts from local cache data and schedules its refresh from Init.
 func NewModel(client *azure.Client, store *cache.Store, config Config, topology cache.TopologySnapshot, vmInventory cache.VMInventorySnapshot, preferences cache.Preferences) Model {
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = true
-	delegate.SetHeight(2)
-	delegate.SetSpacing(0)
-	vmList := list.New(nil, delegate, 48, 16)
+	useUnicode := unicodeFromEnv(os.Getenv)
+	vmList := list.New(nil, newTargetDelegate(useUnicode), 48, 16)
 	vmList.Title = "Eligible VMs"
 	vmList.SetShowHelp(false)
 	vmList.SetShowPagination(false)
 	vmList.SetStatusBarItemName("VM", "VMs")
 	vmList.FilterInput.Prompt = "Search > "
 	vmList.FilterInput.Placeholder = "VM, subscription, resource group, Bastion"
+	vmList.Filter = allTermsFilter
 	vmList.DisableQuitKeybindings()
 
 	m := Model{
@@ -88,10 +89,12 @@ func NewModel(client *azure.Client, store *cache.Store, config Config, topology 
 		activeView: mainView, topology: topology, targets: vmInventory.Targets,
 		subscriptions:         topology.Subscriptions,
 		hiddenSubscriptionIDs: hiddenSet(preferences.HiddenSubscriptionIDs),
+		favoriteVMIDs:         favoriteSet(preferences.FavoriteVMIDs),
 		vmList:                vmList,
 		spinner:               spinner.New(spinner.WithSpinner(spinner.Dot)),
 		loading:               true,
 		lastRefresh:           vmInventory.FetchedAt,
+		useUnicode:            useUnicode,
 	}
 	sort.Slice(m.subscriptions, func(i, j int) bool {
 		return strings.ToLower(m.subscriptions[i].Name) < strings.ToLower(m.subscriptions[j].Name)
@@ -111,13 +114,29 @@ func hiddenSet(ids []string) map[string]bool {
 	return hidden
 }
 
+func favoriteSet(ids []string) map[string]bool {
+	favorites := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id != "" {
+			favorites[id] = true
+		}
+	}
+	return favorites
+}
+
 func (m *Model) rebuildList() {
 	filtered := inventory.FilterTargets(m.targets, m.hiddenSubscriptionIDs, "")
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return m.favoriteVMIDs[normalizedID(filtered[i].VM.ID)] && !m.favoriteVMIDs[normalizedID(filtered[j].VM.ID)]
+	})
 	items := make([]list.Item, 0, len(filtered))
 	for _, target := range filtered {
-		items = append(items, targetItem{target: target, subscriptionName: m.subscriptionName(target.VM.SubscriptionID)})
+		items = append(items, targetItem{target: target, subscriptionName: m.subscriptionName(target.VM.SubscriptionID), favorite: m.favoriteVMIDs[normalizedID(target.VM.ID)], useUnicode: m.useUnicode})
 	}
-	_ = m.vmList.SetItems(items)
+	if cmd := m.vmList.SetItems(items); cmd != nil {
+		m.vmList, _ = m.vmList.Update(cmd())
+	}
 }
 
 func (m Model) subscriptionName(id string) string {
@@ -147,7 +166,7 @@ func (m *Model) applySubscriptionFilter() error {
 		}
 	}
 	sort.Strings(ids)
-	if err := m.store.SavePreferences(cache.Preferences{HiddenSubscriptionIDs: ids}); err != nil {
+	if err := m.store.SavePreferences(cache.Preferences{HiddenSubscriptionIDs: ids, FavoriteVMIDs: m.favoriteIDs()}); err != nil {
 		return err
 	}
 	m.rebuildList()
@@ -155,6 +174,89 @@ func (m *Model) applySubscriptionFilter() error {
 	m.activeView = mainView
 	m.status = "Subscription filter applied"
 	return nil
+}
+
+func (m *Model) toggleFavorite() error {
+	target := m.selectedTarget()
+	if target == nil {
+		return nil
+	}
+	id := normalizedID(target.VM.ID)
+	if id == "" {
+		return nil
+	}
+	wasFavorite := m.favoriteVMIDs[id]
+	if wasFavorite {
+		delete(m.favoriteVMIDs, id)
+		m.status = "Removed " + target.VM.Name + " from favorites"
+	} else {
+		m.favoriteVMIDs[id] = true
+		m.status = "Added " + target.VM.Name + " to favorites"
+	}
+	if err := m.store.SavePreferences(cache.Preferences{HiddenSubscriptionIDs: m.hiddenIDs(), FavoriteVMIDs: m.favoriteIDs()}); err != nil {
+		if wasFavorite {
+			m.favoriteVMIDs[id] = true
+		} else {
+			delete(m.favoriteVMIDs, id)
+		}
+		return err
+	}
+	m.rebuildList()
+	return nil
+}
+
+func (m Model) hiddenIDs() []string {
+	return enabledIDs(m.hiddenSubscriptionIDs)
+}
+
+func (m Model) favoriteIDs() []string {
+	return enabledIDs(m.favoriteVMIDs)
+}
+
+func enabledIDs(ids map[string]bool) []string {
+	result := make([]string, 0, len(ids))
+	for id, enabled := range ids {
+		if enabled {
+			result = append(result, id)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func normalizedID(id string) string {
+	return strings.ToLower(strings.TrimSpace(id))
+}
+
+func unicodeFromEnv(getenv func(string) string) bool {
+	for _, name := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		locale := getenv(name)
+		if locale == "" {
+			continue
+		}
+		locale = strings.ToLower(locale)
+		return strings.Contains(locale, ".utf-8") || strings.Contains(locale, ".utf8")
+	}
+	return false
+}
+
+func allTermsFilter(term string, targets []string) []list.Rank {
+	terms := strings.Fields(strings.ToLower(term))
+	ranks := make([]list.Rank, 0, len(targets))
+	for index, target := range targets {
+		target = strings.ToLower(target)
+		matches := true
+		for _, term := range terms {
+			if !strings.Contains(target, term) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			ranks = append(ranks, list.Rank{Index: index})
+		}
+	}
+	return ranks
 }
 
 func (m *Model) selectedTarget() *inventory.EligibleTarget {
@@ -169,9 +271,16 @@ func (m *Model) selectedTarget() *inventory.EligibleTarget {
 type targetItem struct {
 	target           inventory.EligibleTarget
 	subscriptionName string
+	favorite         bool
+	useUnicode       bool
 }
 
-func (i targetItem) Title() string { return i.target.VM.Name }
+func (i targetItem) Title() string {
+	if i.favorite {
+		return favoriteMarker(i.useUnicode) + " " + i.target.VM.Name
+	}
+	return i.target.VM.Name
+}
 
 func (i targetItem) Description() string {
 	route := i.target.Routes[0]
