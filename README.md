@@ -19,7 +19,12 @@ the finder is available while refresh runs in the background.
 ## Requirements
 
 - Linux or macOS on `amd64` or `arm64`
-- Azure CLI with the Bastion extension available
+- Azure CLI (`az`) installed
+- az extensions `bastion` and `ssh`:
+```sh
+az extension add --name bastion
+az extension add --name ssh
+```
 - An authenticated Azure CLI session: `az login`
 - Azure Bastion Standard or Premium hosts with native client/tunneling enabled
 - Permission to read the relevant Azure resources and connect through Bastion
