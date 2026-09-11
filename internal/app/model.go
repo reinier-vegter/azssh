@@ -292,6 +292,9 @@ func (i targetItem) Description() string {
 
 func (i targetItem) FilterValue() string {
 	parts := []string{i.target.VM.Name, i.subscriptionName, i.target.VM.ResourceGroup, i.target.VM.SubscriptionID}
+	for _, value := range inventory.DisplayTags(i.target.VM.Tags) {
+		parts = append(parts, value)
+	}
 	for _, route := range i.target.Routes {
 		parts = append(parts, route.Bastion.Name, route.Bastion.ResourceGroup)
 	}

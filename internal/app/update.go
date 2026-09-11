@@ -47,8 +47,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		m.targets = msg.vmInventory.Targets
 		m.lastRefresh = msg.vmInventory.FetchedAt
-		m.status = fmt.Sprintf("Loaded %d eligible VMs", len(m.targets))
 		m.rebuildList()
+		m.status = fmt.Sprintf("Loaded %d eligible VMs (%d shown)", len(m.targets), len(m.vmList.Items()))
+		if m.vmList.SettingFilter() {
+			m.status += fmt.Sprintf("; %d matching", len(m.vmList.VisibleItems()))
+		}
 		return m, nil
 	case refreshFailedMsg:
 		m.loading = false
@@ -78,6 +81,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.activeView == mainView {
 		var cmd tea.Cmd
 		m.vmList, cmd = m.vmList.Update(msg)
+		m.updateSearchStatus()
 		return m, cmd
 	}
 	return m, nil
@@ -116,6 +120,7 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.vmList.SettingFilter() {
 		var cmd tea.Cmd
 		m.vmList, cmd = m.vmList.Update(msg)
+		m.updateSearchStatus()
 		return m, cmd
 	}
 	if key.Matches(msg, m.keys.Quit) {
@@ -135,7 +140,11 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if key.Matches(msg, m.keys.Refresh) && !m.loading {
+	if key.Matches(msg, m.keys.Refresh) {
+		if m.loading {
+			m.status = "Refresh already in progress"
+			return m, nil
+		}
 		m.loading = true
 		m.status = "Refreshing Azure inventory"
 		return m, tea.Batch(m.refreshCmd(), m.spinner.Tick)
@@ -158,7 +167,22 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.vmList, cmd = m.vmList.Update(msg)
+	m.updateSearchStatus()
 	return m, cmd
+}
+
+func (m *Model) updateSearchStatus() {
+	if m.vmList.SettingFilter() {
+		m.status = fmt.Sprintf("%d matching VMs", len(m.vmList.VisibleItems()))
+		return
+	}
+	if strings.HasSuffix(m.status, "matching VMs") {
+		m.status = ""
+		return
+	}
+	if separator := strings.LastIndex(m.status, "; "); separator >= 0 && strings.HasSuffix(m.status, " matching") {
+		m.status = m.status[:separator]
+	}
 }
 
 func (m Model) updateSubscriptionFilter(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

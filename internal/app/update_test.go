@@ -62,6 +62,139 @@ func TestAllTermsFilter(t *testing.T) {
 	}
 }
 
+func TestTargetFilterValueIncludesResourceGroupAndTagValues(t *testing.T) {
+	item := targetItem{target: inventory.EligibleTarget{
+		VM: inventory.VirtualMachine{
+			Name: "api-01", ResourceGroup: "payments-prod-rg",
+			Tags: map[string]string{"Environment": "production", "Ignore": "not searchable"},
+		},
+		Routes: []inventory.BastionRoute{{}},
+	}, subscriptionName: "Production"}
+
+	for _, term := range []string{"payments-prod-rg", "production", "payments-prod-rg production"} {
+		if ranks := allTermsFilter(term, []string{item.FilterValue()}); len(ranks) != 1 {
+			t.Fatalf("search for %q ranks = %#v", term, ranks)
+		}
+	}
+	for _, term := range []string{"not searchable", "environment", "environment:production"} {
+		if ranks := allTermsFilter(term, []string{item.FilterValue()}); len(ranks) != 0 {
+			t.Fatalf("search for %q ranks = %#v", term, ranks)
+		}
+	}
+}
+
+func TestTargetDescriptionDoesNotIncludeDetailMetadata(t *testing.T) {
+	item := targetItem{target: inventory.EligibleTarget{
+		VM:     inventory.VirtualMachine{ResourceGroup: "platform-rg", Location: "westeurope", Size: "Standard_D4s_v5", PrivateIPs: []string{"10.0.0.4"}},
+		Routes: []inventory.BastionRoute{{Bastion: inventory.Bastion{Name: "bastion-prod"}}},
+	}, subscriptionName: "Production"}
+	if got, want := item.Description(), "Production / platform-rg  via bastion-prod"; got != want {
+		t.Fatalf("Description() = %q, want %q", got, want)
+	}
+}
+
+func TestRefreshStatusReportsVisibleCountAndActiveRefresh(t *testing.T) {
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{}, cache.Preferences{HiddenSubscriptionIDs: []string{"sub-2"}})
+	updated, _ := model.Update(refreshSucceededMsg{
+		topology: cache.TopologySnapshot{Subscriptions: []inventory.Subscription{{ID: "sub-1", Name: "One"}, {ID: "sub-2", Name: "Two"}}},
+		vmInventory: cache.VMInventorySnapshot{Targets: []inventory.EligibleTarget{
+			{VM: inventory.VirtualMachine{ID: "vm-1", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+			{VM: inventory.VirtualMachine{ID: "vm-2", OSType: "Linux", SubscriptionID: "sub-2"}, Routes: []inventory.BastionRoute{{}}},
+		}},
+	})
+	result := updated.(Model)
+	if result.status != "Loaded 2 eligible VMs (1 shown)" {
+		t.Fatalf("refresh status = %q", result.status)
+	}
+	result.loading = true
+	updated, _ = result.updateKey(tea.KeyPressMsg(tea.Key{Code: 'r', Text: "r"}))
+	if got := updated.(Model).status; got != "Refresh already in progress" {
+		t.Fatalf("active refresh status = %q", got)
+	}
+}
+
+func TestRefreshStatusRetainsSearchMatchCount(t *testing.T) {
+	targets := []inventory.EligibleTarget{
+		{VM: inventory.VirtualMachine{ID: "vm-1", Name: "api", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+		{VM: inventory.VirtualMachine{ID: "vm-2", Name: "worker", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+	}
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{Subscriptions: []inventory.Subscription{{ID: "sub-1", Name: "One"}}}, cache.VMInventorySnapshot{Targets: targets}, cache.Preferences{})
+	model.vmList.FilterInput.SetValue("api")
+	model.vmList.SetFilterState(list.Filtering)
+	model.rebuildList()
+
+	updated, _ := model.Update(refreshSucceededMsg{
+		topology:    cache.TopologySnapshot{Subscriptions: []inventory.Subscription{{ID: "sub-1", Name: "One"}}},
+		vmInventory: cache.VMInventorySnapshot{Targets: targets},
+	})
+	if got := updated.(Model).status; got != "Loaded 2 eligible VMs (2 shown); 1 matching" {
+		t.Fatalf("refresh search status = %q", got)
+	}
+}
+
+func TestSearchStatusUpdatesAfterFilterResults(t *testing.T) {
+	targets := []inventory.EligibleTarget{
+		{VM: inventory.VirtualMachine{ID: "vm-1", Name: "api", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+		{VM: inventory.VirtualMachine{ID: "vm-2", Name: "worker", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+	}
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{Subscriptions: []inventory.Subscription{{ID: "sub-1", Name: "One"}}}, cache.VMInventorySnapshot{Targets: targets}, cache.Preferences{})
+	model.vmList.SetFilterState(list.Filtering)
+
+	updated, cmd := model.updateKey(tea.KeyPressMsg(tea.Key{Code: 'a', Text: "a"}))
+	if cmd == nil {
+		t.Fatal("filter input did not return a command")
+	}
+	commands, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatal("filter input did not return a batch command")
+	}
+	for _, command := range commands {
+		if msg := command(); msg != nil {
+			if _, ok := msg.(list.FilterMatchesMsg); ok {
+				updated, _ = updated.(Model).Update(msg)
+			}
+		}
+	}
+	if got := updated.(Model).status; got != "1 matching VMs" {
+		t.Fatalf("filter result status = %q", got)
+	}
+}
+
+func TestSearchStatusClearsAfterCancel(t *testing.T) {
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{}, cache.Preferences{})
+	model.status = "0 matching VMs"
+	model.vmList.SetFilterState(list.Filtering)
+
+	updated, _ := model.updateKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	result := updated.(Model)
+	if result.vmList.SettingFilter() {
+		t.Fatal("search remains active after escape")
+	}
+	if result.status != "" {
+		t.Fatalf("search status = %q, want empty", result.status)
+	}
+}
+
+func TestRefreshSearchStatusClearsAfterCancel(t *testing.T) {
+	targets := []inventory.EligibleTarget{
+		{VM: inventory.VirtualMachine{ID: "vm-1", Name: "api", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+		{VM: inventory.VirtualMachine{ID: "vm-2", Name: "worker", OSType: "Linux", SubscriptionID: "sub-1"}, Routes: []inventory.BastionRoute{{}}},
+	}
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{Subscriptions: []inventory.Subscription{{ID: "sub-1", Name: "One"}}}, cache.VMInventorySnapshot{Targets: targets}, cache.Preferences{})
+	model.vmList.FilterInput.SetValue("api")
+	model.vmList.SetFilterState(list.Filtering)
+	model.rebuildList()
+
+	updated, _ := model.Update(refreshSucceededMsg{
+		topology:    cache.TopologySnapshot{Subscriptions: []inventory.Subscription{{ID: "sub-1", Name: "One"}}},
+		vmInventory: cache.VMInventorySnapshot{Targets: targets},
+	})
+	updated, _ = updated.(Model).updateKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	if got := updated.(Model).status; got != "Loaded 2 eligible VMs (2 shown)" {
+		t.Fatalf("cancelled refresh search status = %q", got)
+	}
+}
+
 func TestUnicodeFromEnv(t *testing.T) {
 	for _, test := range []struct {
 		name string
