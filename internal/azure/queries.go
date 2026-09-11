@@ -33,8 +33,14 @@ Resources
 | where type =~ 'microsoft.compute/virtualmachines'
 | where tostring(properties.storageProfile.osDisk.osType) =~ 'Linux'
 | extend vmId = tolower(id)
+| extend vmSize = tostring(properties.hardwareProfile.vmSize)
+| extend osDiskSizeGB = toint(properties.storageProfile.osDisk.diskSizeGB)
+| extend osDiskStorageType = tostring(properties.storageProfile.osDisk.managedDisk.storageAccountType)
+| extend dataDiskCount = array_length(properties.storageProfile.dataDisks)
+| extend vmTags = tags
 | project vmId, vmResourceId = id, vmName = name, resourceGroup,
-          subscriptionId = tolower(subscriptionId),
+          subscriptionId = tolower(subscriptionId), location, vmSize,
+          osDiskSizeGB, osDiskStorageType, dataDiskCount, vmTags,
           osType = tostring(properties.storageProfile.osDisk.osType)
 | join kind=inner (
     Resources
@@ -44,8 +50,16 @@ Resources
     | extend vmId = tolower(tostring(properties.virtualMachine.id))
     | extend subnetId = tolower(tostring(ipConfiguration.properties.subnet.id))
     | extend vnetId = tostring(split(subnetId, '/subnets/')[0])
+    | extend privateIp = tostring(ipConfiguration.properties.privateIPAddress)
     | where isnotempty(vmId) and isnotempty(vnetId)
-    | project vmId, vnetId
+    | project vmId, vnetId, subnetId, privateIp
 ) on vmId
-| summarize vnetIds = make_set(vnetId) by
-    vmResourceId, vmName, resourceGroup, subscriptionId, osType`
+| summarize vnetIds = make_set(vnetId), subnetIds = make_set(subnetId),
+            privateIPs = make_set(privateIp),
+            vmResourceId = take_any(vmResourceId), vmName = take_any(vmName),
+            resourceGroup = take_any(resourceGroup),
+            subscriptionId = take_any(subscriptionId), location = take_any(location),
+            vmSize = take_any(vmSize), osDiskSizeGB = take_any(osDiskSizeGB),
+            osDiskStorageType = take_any(osDiskStorageType),
+            dataDiskCount = take_any(dataDiskCount), vmTags = take_any(vmTags),
+            osType = take_any(osType) by vmId`

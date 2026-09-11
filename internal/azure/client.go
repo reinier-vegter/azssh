@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"azssh/internal/inventory"
@@ -99,31 +100,62 @@ func (c *Client) ListPeerings(ctx context.Context, subscriptionIDs []string) ([]
 	return peerings, nil
 }
 
-// ListVMs returns VM metadata joined to NIC-derived VNet IDs.
+// ListVMs returns VM metadata joined to NIC-derived network placement.
 func (c *Client) ListVMs(ctx context.Context, subscriptionIDs []string) ([]inventory.VirtualMachine, error) {
-	type row struct {
-		ID             string   `json:"vmResourceId"`
-		Name           string   `json:"vmName"`
-		ResourceGroup  string   `json:"resourceGroup"`
-		SubscriptionID string   `json:"subscriptionId"`
-		OSType         string   `json:"osType"`
-		VNetIDs        []string `json:"vnetIds"`
-	}
-	rows, err := queryAll[row](ctx, c.resourceGraph, virtualMachinesQuery, subscriptionIDs)
+	rows, err := queryAll[virtualMachineRow](ctx, c.resourceGraph, virtualMachinesQuery, subscriptionIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query virtual machines: %w", err)
 	}
+	return virtualMachinesFromRows(rows), nil
+}
 
+type virtualMachineRow struct {
+	ID                string            `json:"vmResourceId"`
+	Name              string            `json:"vmName"`
+	ResourceGroup     string            `json:"resourceGroup"`
+	SubscriptionID    string            `json:"subscriptionId"`
+	OSType            string            `json:"osType"`
+	Location          string            `json:"location"`
+	Size              string            `json:"vmSize"`
+	VNetIDs           []string          `json:"vnetIds"`
+	SubnetIDs         []string          `json:"subnetIds"`
+	PrivateIPs        []string          `json:"privateIPs"`
+	OSDiskSizeGB      int               `json:"osDiskSizeGB"`
+	OSDiskStorageType string            `json:"osDiskStorageType"`
+	DataDiskCount     int               `json:"dataDiskCount"`
+	Tags              map[string]string `json:"vmTags"`
+}
+
+func virtualMachinesFromRows(rows []virtualMachineRow) []inventory.VirtualMachine {
 	vms := make([]inventory.VirtualMachine, 0, len(rows))
 	for _, row := range rows {
-		if row.ID != "" && len(row.VNetIDs) > 0 {
+		vnetIDs := nonEmptyValues(row.VNetIDs)
+		if row.ID != "" && len(vnetIDs) > 0 {
 			vms = append(vms, inventory.VirtualMachine{
 				ID: row.ID, Name: row.Name, ResourceGroup: row.ResourceGroup,
-				SubscriptionID: row.SubscriptionID, OSType: row.OSType, VNetIDs: row.VNetIDs,
+				SubscriptionID: row.SubscriptionID, OSType: row.OSType, Location: row.Location,
+				Size: row.Size, VNetIDs: vnetIDs, SubnetIDs: nonEmptyValues(row.SubnetIDs),
+				PrivateIPs: nonEmptyValues(row.PrivateIPs), OSDiskSizeGB: row.OSDiskSizeGB,
+				OSDiskStorageType: row.OSDiskStorageType, DataDiskCount: row.DataDiskCount,
+				Tags: inventory.DisplayTags(row.Tags),
 			})
 		}
 	}
-	return vms, nil
+	return vms
+}
+
+func nonEmptyValues(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 func queryAll[T any](ctx context.Context, client *armresourcegraph.Client, query string, subscriptionIDs []string) ([]T, error) {

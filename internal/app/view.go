@@ -2,8 +2,11 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+
+	"azssh/internal/inventory"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -65,27 +68,134 @@ func (m Model) mainScreen() string {
 func (m Model) detailView() string {
 	target := m.selectedTarget()
 	if target == nil {
-		return mutedStyle.Render("Select an eligible VM to inspect its Bastion route.")
+		return m.emptyDetailView()
 	}
 	route := target.Routes[0]
 	lines := []string{
 		accentStyle.Render(target.VM.Name),
 		"",
-		"Subscription  " + m.subscriptionName(target.VM.SubscriptionID),
-		"Resource group " + target.VM.ResourceGroup,
-		"OS            " + displayValue(target.VM.OSType),
+		detailLine("Subscription", m.subscriptionName(target.VM.SubscriptionID)),
+		detailLine("Resource group", target.VM.ResourceGroup),
 		"",
-		accentStyle.Render("Connection route"),
-		"Bastion       " + route.Bastion.Name,
-		"Bastion RG    " + route.Bastion.ResourceGroup,
-		"VNet route    " + route.RouteType,
 	}
+	lines = appendDetailLine(lines, "Location", target.VM.Location)
+	lines = appendDetailLine(lines, "Size", target.VM.Size)
+	lines = appendDetailLine(lines, "OS", target.VM.OSType)
+	if len(target.VM.PrivateIPs) > 0 || len(target.VM.SubnetIDs) > 0 || len(target.VM.VNetIDs) > 0 {
+		lines = append(lines, "", accentStyle.Render("Network"))
+		if len(target.VM.PrivateIPs) > 0 {
+			lines = append(lines, detailLine("Private IPs", strings.Join(target.VM.PrivateIPs, ", ")))
+		}
+		if len(target.VM.SubnetIDs) > 0 {
+			lines = append(lines, detailLine("Subnets", strings.Join(target.VM.SubnetIDs, ", ")))
+		}
+		if len(target.VM.VNetIDs) > 0 {
+			lines = append(lines, detailLine("VNets", strings.Join(target.VM.VNetIDs, ", ")))
+		}
+	}
+	if disk := diskDescription(target.VM.OSDiskSizeGB, target.VM.OSDiskStorageType); disk != "" || target.VM.DataDiskCount > 0 {
+		lines = append(lines, "", accentStyle.Render("Storage"))
+		if disk != "" {
+			lines = append(lines, detailLine("OS disk", disk))
+		}
+		if target.VM.DataDiskCount > 0 {
+			lines = append(lines, detailLine("Data disks", fmt.Sprintf("%d", target.VM.DataDiskCount)))
+		}
+	}
+	if tags := displayTags(target.VM.Tags); len(tags) > 0 {
+		lines = append(lines, "", accentStyle.Render("Tags"))
+		for _, tag := range tags {
+			lines = append(lines, detailLine(tag.Key, tag.Value))
+		}
+	}
+	lines = append(lines, "", accentStyle.Render("Connection route"), detailLine("Bastion", route.Bastion.Name), detailLine("Bastion RG", route.Bastion.ResourceGroup))
+	routeType := route.RouteType
+	if len(target.Routes) > 1 {
+		routeType += " (preferred)"
+	}
+	lines = append(lines, detailLine("VNet route", routeType))
 	if len(target.Routes) > 1 {
 		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d routes available; enter or b to choose", len(target.Routes))))
 	} else {
 		lines = append(lines, "", mutedStyle.Render("enter connect  shift+enter review command"))
 	}
-	return strings.Join(lines, "\n")
+	return m.wrapDetail(strings.Join(lines, "\n"))
+}
+
+func (m Model) emptyDetailView() string {
+	if len(m.targets) == 0 {
+		if strings.HasPrefix(m.status, "Refresh failed") {
+			return errorStyle.Render("Azure inventory could not be loaded. Check your Azure CLI session and refresh.")
+		}
+		return mutedStyle.Render("No eligible VMs found. Only Linux VMs with a discovered compatible Bastion route are shown.")
+	}
+	if len(m.vmList.Items()) == 0 {
+		return mutedStyle.Render("No VMs are visible. Press f to change subscription visibility.")
+	}
+	if m.vmList.SettingFilter() && len(m.vmList.VisibleItems()) == 0 {
+		return mutedStyle.Render("No VMs match the current search.")
+	}
+	return mutedStyle.Render("Select an eligible VM to inspect its Bastion route.")
+}
+
+func appendDetailLine(lines []string, label, value string) []string {
+	if value != "" {
+		return append(lines, detailLine(label, value))
+	}
+	return lines
+}
+
+func detailLine(label, value string) string {
+	return fmt.Sprintf("%-14s %s", label, value)
+}
+
+func diskDescription(sizeGB int, storageType string) string {
+	parts := make([]string, 0, 2)
+	if sizeGB > 0 {
+		parts = append(parts, fmt.Sprintf("%d GiB", sizeGB))
+	}
+	if storageType != "" {
+		parts = append(parts, storageType)
+	}
+	return strings.Join(parts, " / ")
+}
+
+type displayTag struct {
+	Key   string
+	Value string
+}
+
+func displayTags(tags map[string]string) []displayTag {
+	tags = inventory.DisplayTags(tags)
+	result := make([]displayTag, 0, len(tags))
+	for key, value := range tags {
+		result = append(result, displayTag{Key: key, Value: value})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		left, right := strings.ToLower(result[i].Key), strings.ToLower(result[j].Key)
+		if left == right {
+			return result[i].Key < result[j].Key
+		}
+		return left < right
+	})
+	return result
+}
+
+func (m Model) wrapDetail(content string) string {
+	if width := m.detailWidth(); width > 0 {
+		return lipgloss.Wrap(content, width, " /,=")
+	}
+	return content
+}
+
+func (m Model) detailWidth() int {
+	if m.width <= 0 {
+		return 0
+	}
+	if m.width < 86 {
+		return max(20, m.width-6)
+	}
+	return max(30, m.width-m.width/2-6)
 }
 
 func (m Model) subscriptionFilterView() string {
@@ -168,6 +278,9 @@ func (m Model) cacheStatus() string {
 		return mutedStyle.Render("cache: empty")
 	}
 	age := time.Since(m.lastRefresh).Round(time.Minute)
+	if strings.HasPrefix(m.status, "Refresh failed") {
+		return errorStyle.Render("cache: " + age.String() + " old (stale)")
+	}
 	return mutedStyle.Render("cache: " + age.String() + " old")
 }
 
@@ -191,13 +304,6 @@ func (m *Model) resizeList() {
 		bannerHeight = 1
 	}
 	m.vmList.SetSize(listWidth, max(8, m.height-8-bannerHeight))
-}
-
-func displayValue(value string) string {
-	if value == "" {
-		return "Unknown"
-	}
-	return value
 }
 
 func max(a, b int) int {

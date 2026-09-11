@@ -89,6 +89,7 @@ Use a Go toolchain matching the version in `go.mod`:
 go test ./...
 go vet ./...
 CGO_ENABLED=0 go build -o azssh ./cmd/azssh
+./azssh
 ```
 
 ## Development

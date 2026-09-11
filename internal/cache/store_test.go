@@ -34,7 +34,11 @@ func TestTopologyRoundTrip(t *testing.T) {
 
 func TestVMInventoryAndPreferencesRoundTrip(t *testing.T) {
 	store := testStore(t)
-	inventorySnapshot := VMInventorySnapshot{FetchedAt: time.Now().UTC().Round(0), Targets: []inventory.EligibleTarget{{VM: inventory.VirtualMachine{ID: "vm-1", VNetIDs: []string{"vnet-1"}}}}}
+	inventorySnapshot := VMInventorySnapshot{FetchedAt: time.Now().UTC().Round(0), Targets: []inventory.EligibleTarget{{VM: inventory.VirtualMachine{
+		ID: "vm-1", VNetIDs: []string{"vnet-1"}, SubnetIDs: []string{"subnet-1"}, PrivateIPs: []string{"10.0.0.4"},
+		Location: "westeurope", Size: "Standard_D2s_v5", OSDiskSizeGB: 64, OSDiskStorageType: "StandardSSD_LRS",
+		DataDiskCount: 1, Tags: map[string]string{"environment": "test", "owner": "platform"},
+	}}}}
 	if err := store.SaveVMInventory(inventorySnapshot); err != nil {
 		t.Fatal(err)
 	}
