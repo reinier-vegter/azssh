@@ -58,7 +58,7 @@ func (m Model) mainScreen() string {
 	if m.width > 0 && m.width < 86 {
 		content = lipgloss.JoinVertical(lipgloss.Left, panelStyle.Render(left), panelStyle.Render(right))
 	}
-	footer := mutedStyle.Render("enter connect  shift+enter review  / search  x favorite  f filters  ? help  r refresh  q quit")
+	footer := mutedStyle.Render("enter connect  t transfer  shift+enter review  / search  x favorite  f filters  ? help  r refresh  q quit")
 	if m.status != "" {
 		footer = footer + "\n" + m.statusStyle().Render(m.status)
 	}
@@ -115,9 +115,9 @@ func (m Model) detailView() string {
 	}
 	lines = append(lines, detailLine("VNet route", routeType))
 	if len(target.Routes) > 1 {
-		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d routes available; enter or b to choose", len(target.Routes))))
+		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d routes available; enter, t, or b to choose", len(target.Routes))))
 	} else {
-		lines = append(lines, "", mutedStyle.Render("enter connect  shift+enter review command"))
+		lines = append(lines, "", mutedStyle.Render("enter connect  t transfer  shift+enter review command"))
 	}
 	return m.wrapDetail(strings.Join(lines, "\n"))
 }
@@ -237,7 +237,11 @@ func (m Model) routeSelectorView() string {
 		}
 		lines = append(lines, fmt.Sprintf("%s %-22s %s / %s   %s", cursor, route.Bastion.Name, m.subscriptionName(route.Bastion.SubscriptionID), route.Bastion.ResourceGroup, route.RouteType))
 	}
-	lines = append(lines, "", mutedStyle.Render("enter connect  shift+enter review command  esc cancel  ? help"))
+	action := "connect"
+	if m.routeTransfer {
+		action = "transfer"
+	}
+	lines = append(lines, "", mutedStyle.Render("enter "+action+"  esc cancel  ? help"))
 	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
@@ -258,6 +262,7 @@ func (m Model) helpView() string {
 		"enter            Connect, or select a Bastion route",
 		"shift+enter      Review the command in your shell, then confirm",
 		"b                Choose an eligible Bastion route",
+		"t                Open an Entra-only scp transfer shell",
 		"",
 		accentStyle.Render("Filter subscriptions"),
 		"space            Toggle subscription visibility",

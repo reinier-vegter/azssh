@@ -63,15 +63,30 @@ type Model struct {
 	filterIndex int
 	filterDraft map[string]bool
 
-	routeTarget *inventory.EligibleTarget
-	routeIndex  int
+	routeTarget   *inventory.EligibleTarget
+	routeIndex    int
+	routeTransfer bool
 
-	reviewCommand []string
+	reviewCommand   []string
+	transferRequest *transferRequest
+}
+
+type transferRequest struct {
+	route inventory.BastionRoute
+	vm    inventory.VirtualMachine
 }
 
 // ReviewCommand returns the requested Bastion command after the TUI exits.
 func (m Model) ReviewCommand() []string {
 	return append([]string(nil), m.reviewCommand...)
+}
+
+// TransferRequest returns the selected Entra transfer route after the TUI exits.
+func (m Model) TransferRequest() (inventory.BastionRoute, inventory.VirtualMachine, bool) {
+	if m.transferRequest == nil {
+		return inventory.BastionRoute{}, inventory.VirtualMachine{}, false
+	}
+	return m.transferRequest.route, m.transferRequest.vm, true
 }
 
 // NewModel starts from local cache data and schedules its refresh from Init.

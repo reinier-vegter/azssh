@@ -25,6 +25,31 @@ func TestSubscriptionFilterTogglesWithSpace(t *testing.T) {
 	}
 }
 
+func TestTransferRequestsSelectedRouteAndRequiresAAD(t *testing.T) {
+	target := inventory.EligibleTarget{VM: inventory.VirtualMachine{ID: "vm-1", Name: "api-01", OSType: "Linux"}, Routes: []inventory.BastionRoute{
+		{Bastion: inventory.Bastion{Name: "preferred"}},
+		{Bastion: inventory.Bastion{Name: "alternate"}},
+	}}
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{Targets: []inventory.EligibleTarget{target}}, cache.Preferences{})
+	updated, _ := model.updateKey(tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
+	result := updated.(Model)
+	if result.activeView != routeSelectorView || !result.routeTransfer {
+		t.Fatalf("transfer did not open route selector: %#v", result)
+	}
+	updated, _ = result.updateRouteSelector(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	route, vm, requested := updated.(Model).TransferRequest()
+	if !requested || route.Bastion.Name != "preferred" || vm.Name != "api-01" {
+		t.Fatalf("transfer request = %#v, %#v, %v", route, vm, requested)
+	}
+
+	model.config.Authentication.Type = "ssh-key"
+	updated, _ = model.updateKey(tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
+	result = updated.(Model)
+	if !strings.Contains(result.status, "requires AAD") || result.activeView != mainView {
+		t.Fatalf("non-AAD transfer result = status %q, view %v", result.status, result.activeView)
+	}
+}
+
 func TestToggleFavoritePersistsAndPrioritizesVM(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	store, err := cache.NewStore("test-account")

@@ -56,6 +56,12 @@ func main() {
 		exitf("TUI failed: %v", err)
 	}
 	if final, ok := finalModel.(app.Model); ok {
+		if route, vm, requested := final.TransferRequest(); requested {
+			if err := shell.StartTransferShell(route, vm, shell.Authentication{Type: *authType, Username: *username, SSHKeyPath: *sshKey}); err != nil {
+				exitf("could not open file transfer shell: %v", err)
+			}
+			return
+		}
 		if command := final.ReviewCommand(); len(command) > 0 {
 			if err := shell.ReplaceWithReviewShell(command); err != nil {
 				exitf("could not open the command review shell: %v", err)

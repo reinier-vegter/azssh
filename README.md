@@ -27,6 +27,7 @@ az extension add --name ssh
 ```
 - An authenticated Azure CLI session: `az login`
 - Azure Bastion Standard or Premium hosts with native client/tunneling enabled
+- Bash and OpenSSH `scp` for file transfer
 - Permission to read the relevant Azure resources and connect through Bastion
 
 The default connection type is Microsoft Entra ID (`AAD`). Guest access and VM
@@ -70,6 +71,7 @@ Key bindings:
 | `x` | Toggle the selected VM as a favorite; favorites appear first |
 | `f` | Filter subscriptions |
 | `b` | Choose a Bastion route when multiple routes are available |
+| `t` | Open an Entra-only `scp` transfer shell for the selected VM |
 | `r` | Refresh Azure inventory |
 | `?` | Show help |
 | `q` | Quit |
@@ -80,6 +82,21 @@ Cache files are stored under the operating system user cache directory in an
 account-specific `azssh` directory. The cache contains inventory metadata and
 subscription and favorite preferences only. It never stores Azure access tokens, passwords,
 or SSH private keys.
+
+File transfer is available only with the default Entra ID (`AAD`) authentication.
+Press `t` to open a temporary Bash shell after choosing the VM and Bastion route.
+It accepts exactly one remote endpoint using the selected VM name, for example:
+
+```sh
+scp ./report.csv api-01:/home/reinier/
+scp api-01:/var/log/app.log .
+```
+
+The transfer session creates an ephemeral key, Entra certificate, loopback
+Bastion tunnel, and Bash rc file, then removes them when the shell exits. It
+never modifies `~/.ssh` or any SSH config. Host-key checking is deliberately
+disabled for this temporary loopback session, matching Azure Bastion native
+client behavior.
 
 ## Build from Source
 
