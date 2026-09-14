@@ -33,7 +33,7 @@ func TestTransferRequestsSelectedRouteAndRequiresAAD(t *testing.T) {
 	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{Targets: []inventory.EligibleTarget{target}}, cache.Preferences{})
 	updated, _ := model.updateKey(tea.KeyPressMsg(tea.Key{Code: 't', Text: "t"}))
 	result := updated.(Model)
-	if result.activeView != routeSelectorView || !result.routeTransfer {
+	if result.activeView != routeSelectorView || result.routeAction != routeTransfer {
 		t.Fatalf("transfer did not open route selector: %#v", result)
 	}
 	updated, _ = result.updateRouteSelector(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
@@ -47,6 +47,47 @@ func TestTransferRequestsSelectedRouteAndRequiresAAD(t *testing.T) {
 	result = updated.(Model)
 	if !strings.Contains(result.status, "requires AAD") || result.activeView != mainView {
 		t.Fatalf("non-AAD transfer result = status %q, view %v", result.status, result.activeView)
+	}
+}
+
+func TestMountPromptsForPathAndRequiresAAD(t *testing.T) {
+	target := inventory.EligibleTarget{VM: inventory.VirtualMachine{ID: "vm-1", Name: "api-01", OSType: "Linux"}, Routes: []inventory.BastionRoute{
+		{Bastion: inventory.Bastion{Name: "preferred"}},
+		{Bastion: inventory.Bastion{Name: "alternate"}},
+	}}
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{Targets: []inventory.EligibleTarget{target}}, cache.Preferences{})
+	updated, _ := model.updateKey(tea.KeyPressMsg(tea.Key{Code: 'm', Text: "m"}))
+	result := updated.(Model)
+	if result.activeView != routeSelectorView || result.routeAction != routeMount {
+		t.Fatalf("mount did not open route selector: %#v", result)
+	}
+	updated, _ = result.updateRouteSelector(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	result = updated.(Model)
+	if result.activeView != mountPathView || result.mountPath.Value() != "." {
+		t.Fatalf("mount path prompt = view %v, path %q", result.activeView, result.mountPath.Value())
+	}
+	result.mountPath.SetValue("/srv/data")
+	updated, _ = result.updateMountPath(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	route, vm, remotePath, requested := updated.(Model).MountRequest()
+	if !requested || route.Bastion.Name != "preferred" || vm.Name != "api-01" || remotePath != "/srv/data" {
+		t.Fatalf("mount request = %#v, %#v, %q, %v", route, vm, remotePath, requested)
+	}
+
+	model.config.Authentication.Type = "ssh-key"
+	updated, _ = model.updateKey(tea.KeyPressMsg(tea.Key{Code: 'm', Text: "m"}))
+	result = updated.(Model)
+	if !strings.Contains(result.status, "requires AAD") || result.activeView != mainView {
+		t.Fatalf("non-AAD mount result = status %q, view %v", result.status, result.activeView)
+	}
+}
+
+func TestMountPathCancelHasNoRequest(t *testing.T) {
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{}, cache.Preferences{})
+	model.openMountPath(inventory.BastionRoute{}, inventory.VirtualMachine{Name: "api-01"})
+	updated, _ := model.updateMountPath(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	result := updated.(Model)
+	if result.activeView != mainView || result.mountRequest != nil {
+		t.Fatalf("cancelled mount = view %v, request %#v", result.activeView, result.mountRequest)
 	}
 }
 

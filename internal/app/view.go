@@ -29,6 +29,8 @@ func (m Model) View() tea.View {
 		content = m.subscriptionFilterView()
 	case routeSelectorView:
 		content = m.routeSelectorView()
+	case mountPathView:
+		content = m.mountPathView()
 	case helpView:
 		content = m.helpView()
 	default:
@@ -58,7 +60,7 @@ func (m Model) mainScreen() string {
 	if m.width > 0 && m.width < 86 {
 		content = lipgloss.JoinVertical(lipgloss.Left, panelStyle.Render(left), panelStyle.Render(right))
 	}
-	footer := mutedStyle.Render("enter connect  t transfer  shift+enter review  / search  x favorite  f filters  ? help  r refresh  q quit")
+	footer := mutedStyle.Render("enter connect  t transfer  m mount  shift+enter review  / search  x favorite  f filters  ? help  r refresh  q quit")
 	if m.status != "" {
 		footer = footer + "\n" + m.statusStyle().Render(m.status)
 	}
@@ -115,9 +117,9 @@ func (m Model) detailView() string {
 	}
 	lines = append(lines, detailLine("VNet route", routeType))
 	if len(target.Routes) > 1 {
-		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d routes available; enter, t, or b to choose", len(target.Routes))))
+		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d routes available; enter, t, m, or b to choose", len(target.Routes))))
 	} else {
-		lines = append(lines, "", mutedStyle.Render("enter connect  t transfer  shift+enter review command"))
+		lines = append(lines, "", mutedStyle.Render("enter connect  t transfer  m mount  shift+enter review command"))
 	}
 	return m.wrapDetail(strings.Join(lines, "\n"))
 }
@@ -237,11 +239,29 @@ func (m Model) routeSelectorView() string {
 		}
 		lines = append(lines, fmt.Sprintf("%s %-22s %s / %s   %s", cursor, route.Bastion.Name, m.subscriptionName(route.Bastion.SubscriptionID), route.Bastion.ResourceGroup, route.RouteType))
 	}
-	action := "connect"
-	if m.routeTransfer {
-		action = "transfer"
-	}
+	action := []string{"connect", "transfer", "mount"}[m.routeAction]
 	lines = append(lines, "", mutedStyle.Render("enter "+action+"  esc cancel  ? help"))
+	return panelStyle.Render(strings.Join(lines, "\n"))
+}
+
+func (m Model) mountPathView() string {
+	if m.routeTarget == nil || len(m.routeTarget.Routes) != 1 {
+		return m.mainScreen()
+	}
+	route := m.routeTarget.Routes[0]
+	lines := []string{
+		accentStyle.Render("Mount " + m.routeTarget.VM.Name),
+		"",
+		"Choose the remote directory to mount at " + "~/azssh/mnt/" + m.routeTarget.VM.Name + ".",
+		"Bastion: " + route.Bastion.Name + " / " + route.Bastion.ResourceGroup,
+		"",
+		m.mountPath.View(),
+		"",
+		mutedStyle.Render("enter mount  esc cancel"),
+	}
+	if m.status != "" {
+		lines = append(lines, m.statusStyle().Render(m.status))
+	}
 	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
@@ -263,6 +283,7 @@ func (m Model) helpView() string {
 		"shift+enter      Review the command in your shell, then confirm",
 		"b                Choose an eligible Bastion route",
 		"t                Open an Entra-only scp transfer shell",
+		"m                Mount a remote directory with Entra SSHFS",
 		"",
 		accentStyle.Render("Filter subscriptions"),
 		"space            Toggle subscription visibility",

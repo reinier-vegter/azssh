@@ -56,6 +56,12 @@ func main() {
 		exitf("TUI failed: %v", err)
 	}
 	if final, ok := finalModel.(app.Model); ok {
+		if route, vm, remotePath, requested := final.MountRequest(); requested {
+			if err := shell.StartMount(route, vm, remotePath, shell.Authentication{Type: *authType, Username: *username, SSHKeyPath: *sshKey}); err != nil {
+				exitf("could not mount remote directory: %v", err)
+			}
+			return
+		}
 		if route, vm, requested := final.TransferRequest(); requested {
 			if err := shell.StartTransferShell(route, vm, shell.Authentication{Type: *authType, Username: *username, SSHKeyPath: *sshKey}); err != nil {
 				exitf("could not open file transfer shell: %v", err)

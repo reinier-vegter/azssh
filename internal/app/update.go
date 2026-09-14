@@ -115,6 +115,8 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateSubscriptionFilter(msg)
 	case routeSelectorView:
 		return m.updateRouteSelector(msg)
+	case mountPathView:
+		return m.updateMountPath(msg)
 	}
 
 	if m.vmList.SettingFilter() {
@@ -151,7 +153,7 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if key.Matches(msg, m.keys.Route) {
 		if target := m.selectedTarget(); target != nil && len(target.Routes) > 1 {
-			m.routeTarget, m.routeIndex, m.routeTransfer, m.activeView = target, 0, false, routeSelectorView
+			m.routeTarget, m.routeIndex, m.routeAction, m.activeView = target, 0, routeConnect, routeSelectorView
 		}
 		return m, nil
 	}
@@ -162,17 +164,31 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if target := m.selectedTarget(); target != nil {
 			if len(target.Routes) > 1 {
-				m.routeTarget, m.routeIndex, m.routeTransfer, m.activeView = target, 0, true, routeSelectorView
+				m.routeTarget, m.routeIndex, m.routeAction, m.activeView = target, 0, routeTransfer, routeSelectorView
 				return m, nil
 			}
 			return m.startTransfer(target.Routes[0], target.VM)
 		}
 		return m, nil
 	}
+	if key.Matches(msg, m.keys.Mount) {
+		if !usesAAD(m.config.Authentication) {
+			m.status = "Mounting requires AAD authentication"
+			return m, nil
+		}
+		if target := m.selectedTarget(); target != nil {
+			if len(target.Routes) > 1 {
+				m.routeTarget, m.routeIndex, m.routeAction, m.activeView = target, 0, routeMount, routeSelectorView
+				return m, nil
+			}
+			m.openMountPath(target.Routes[0], target.VM)
+		}
+		return m, nil
+	}
 	if msg.Key().Code == tea.KeyEnter {
 		if target := m.selectedTarget(); target != nil {
 			if len(target.Routes) > 1 {
-				m.routeTarget, m.routeIndex, m.routeTransfer, m.activeView = target, 0, false, routeSelectorView
+				m.routeTarget, m.routeIndex, m.routeAction, m.activeView = target, 0, routeConnect, routeSelectorView
 				return m, nil
 			}
 			return m.startShell(target.Routes[0], target.VM, msg.Key().Mod&tea.ModShift != 0)
@@ -249,7 +265,7 @@ func (m Model) updateRouteSelector(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key.Matches(msg, m.keys.Cancel) {
-		m.activeView, m.routeTarget, m.routeTransfer = mainView, nil, false
+		m.activeView, m.routeTarget, m.routeAction = mainView, nil, routeConnect
 		return m, nil
 	}
 	if key.Matches(msg, m.keys.Quit) {
@@ -262,10 +278,14 @@ func (m Model) updateRouteSelector(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.Key().Code == tea.KeyEnter {
 		route := m.routeTarget.Routes[m.routeIndex]
 		vm := m.routeTarget.VM
-		transfer := m.routeTransfer
-		m.activeView, m.routeTarget, m.routeTransfer = mainView, nil, false
-		if transfer {
+		action := m.routeAction
+		m.activeView, m.routeTarget, m.routeAction = mainView, nil, routeConnect
+		if action == routeTransfer {
 			return m.startTransfer(route, vm)
+		}
+		if action == routeMount {
+			m.openMountPath(route, vm)
+			return m, nil
 		}
 		return m.startShell(route, vm, msg.Key().Mod&tea.ModShift != 0)
 	}
@@ -280,6 +300,46 @@ func (m Model) updateRouteSelector(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func usesAAD(authentication shell.Authentication) bool {
+	typeName := strings.TrimSpace(authentication.Type)
+	return typeName == "" || strings.EqualFold(typeName, "AAD")
+}
+
+func (m *Model) openMountPath(route inventory.BastionRoute, vm inventory.VirtualMachine) {
+	m.routeTarget = &inventory.EligibleTarget{VM: vm, Routes: []inventory.BastionRoute{route}}
+	m.mountPath.SetValue(".")
+	m.mountPath.Focus()
+	m.activeView = mountPathView
+}
+
+func (m Model) updateMountPath(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if key.Matches(msg, m.keys.Cancel) {
+		m.mountPath.Blur()
+		m.routeTarget = nil
+		m.activeView = mainView
+		return m, nil
+	}
+	if key.Matches(msg, m.keys.Quit) {
+		return m, tea.Quit
+	}
+	if msg.Key().Code == tea.KeyEnter {
+		remotePath := strings.TrimSpace(m.mountPath.Value())
+		if remotePath == "" || strings.ContainsRune(remotePath, '\x00') || strings.Contains(remotePath, "\n") || strings.Contains(remotePath, "\r") {
+			m.status = "Remote path must be a non-empty POSIX path"
+			return m, nil
+		}
+		if m.routeTarget == nil || len(m.routeTarget.Routes) != 1 {
+			m.activeView = mainView
+			return m, nil
+		}
+		m.mountRequest = &mountRequest{route: m.routeTarget.Routes[0], vm: m.routeTarget.VM, remotePath: remotePath}
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.mountPath, cmd = m.mountPath.Update(msg)
+	return m, cmd
 }
 
 func (m Model) startTransfer(route inventory.BastionRoute, vm inventory.VirtualMachine) (tea.Model, tea.Cmd) {

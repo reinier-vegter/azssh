@@ -28,10 +28,32 @@ az extension add --name ssh
 - An authenticated Azure CLI session: `az login`
 - Azure Bastion Standard or Premium hosts with native client/tunneling enabled
 - Bash and OpenSSH `scp` for file transfer
+- SSHFS and its user-mount runtime for directory mounts: FUSE 3 on Linux, or
+  macFUSE/FUSE-T on macOS
 - Permission to read the relevant Azure resources and connect through Bastion
 
 The default connection type is Microsoft Entra ID (`AAD`). Guest access and VM
 authentication requirements remain enforced by Azure Bastion and the Azure CLI.
+
+### Install SSHFS
+
+Install SSHFS only when using the `m` directory-mount action:
+
+```sh
+# Ubuntu
+sudo apt update && sudo apt install sshfs
+
+# Fedora
+sudo dnf install fuse-sshfs
+
+# macOS: install the FUSE runtime, then SSHFS
+brew install --cask macfuse
+open https://github.com/libfuse/sshfs/releases/latest
+```
+
+On macOS, download and run the SSHFS `.pkg` from the release page after
+installing macFUSE. Approve macFUSE in System Settings if prompted. On Linux,
+confirm that your user can access `/dev/fuse` before mounting.
 
 ## Install
 
@@ -72,6 +94,7 @@ Key bindings:
 | `f` | Filter subscriptions |
 | `b` | Choose a Bastion route when multiple routes are available |
 | `t` | Open an Entra-only `scp` transfer shell for the selected VM |
+| `m` | Mount a remote directory with Entra SSHFS |
 | `r` | Refresh Azure inventory |
 | `?` | Show help |
 | `q` | Quit |
@@ -97,6 +120,19 @@ Bastion tunnel, and Bash rc file, then removes them when the shell exits. It
 never modifies `~/.ssh` or any SSH config. Host-key checking is deliberately
 disabled for this temporary loopback session, matching Azure Bastion native
 client behavior.
+
+Directory mounts are also available only with Entra ID. Press `m`, choose a
+remote directory (default `.` for the remote home), and azssh mounts it at
+`~/azssh/mnt/<vm-name>`. SSHFS remains in the foreground until it exits or you
+press Ctrl-C; azssh then unmounts before removing its temporary identity and
+tunnel. It prints the exact mountpoint when SSHFS starts. The empty mountpoint
+directory remains for later use. azssh never
+installs SSHFS or FUSE and never uses `sudo`; install the platform runtime
+through your normal system process first. The mount uses `-F /dev/null` and
+explicit temporary SSH options, so it does not read or modify `~/.ssh`.
+On Linux, install the distribution's `sshfs` package and ensure the user can
+access `/dev/fuse`. On macOS, install SSHFS together with macFUSE or FUSE-T and
+complete any one-time system approval required by that runtime.
 
 ## Build from Source
 

@@ -20,7 +20,7 @@ const transferTunnelTimeout = 20 * time.Second
 // StartTransferShell opens a temporary Bash session for Entra-authenticated scp
 // transfers to or from the selected VM. It removes all temporary state on exit.
 func StartTransferShell(route inventory.BastionRoute, vm inventory.VirtualMachine, authentication Authentication) error {
-	if !strings.EqualFold(strings.TrimSpace(authentication.Type), "AAD") && strings.TrimSpace(authentication.Type) != "" {
+	if !usesAAD(authentication) {
 		return fmt.Errorf("file transfer requires AAD authentication")
 	}
 	for _, executable := range []string{"az", "ssh-keygen", "scp", "bash"} {
@@ -29,32 +29,61 @@ func StartTransferShell(route inventory.BastionRoute, vm inventory.VirtualMachin
 		}
 	}
 
-	directory, err := os.MkdirTemp("", "azssh-transfer-")
+	session, err := startEntraSession(route, vm, "transfer")
 	if err != nil {
-		return fmt.Errorf("create temporary transfer directory: %w", err)
+		return err
 	}
-	defer os.RemoveAll(directory)
-	if err := os.Chmod(directory, 0o700); err != nil {
-		return fmt.Errorf("secure temporary transfer directory: %w", err)
+	defer session.Close()
+	rcPath := filepath.Join(session.directory, "bashrc")
+	if err := os.WriteFile(rcPath, []byte(transferRC(vm.Name, session.username, session.keyPath, session.certificatePath, session.port, route)), 0o600); err != nil {
+		return fmt.Errorf("write transfer shell configuration: %w", err)
 	}
+	bash := exec.Command("bash", "--noprofile", "--rcfile", rcPath, "-i")
+	bash.Stdin, bash.Stdout, bash.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := bash.Run(); err != nil {
+		return fmt.Errorf("transfer shell exited: %w", err)
+	}
+	return nil
+}
 
+type entraSession struct {
+	directory       string
+	keyPath         string
+	certificatePath string
+	username        string
+	port            int
+	tunnel          *exec.Cmd
+	tunnelDone      <-chan error
+}
+
+func startEntraSession(route inventory.BastionRoute, vm inventory.VirtualMachine, purpose string) (*entraSession, error) {
+	directory, err := os.MkdirTemp("", "azssh-"+purpose+"-")
+	if err != nil {
+		return nil, fmt.Errorf("create temporary %s directory: %w", purpose, err)
+	}
+	cleanup := func(err error) (*entraSession, error) {
+		_ = os.RemoveAll(directory)
+		return nil, err
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		return cleanup(fmt.Errorf("secure temporary %s directory: %w", purpose, err))
+	}
 	keyPath := filepath.Join(directory, "identity")
 	if output, err := exec.Command("ssh-keygen", "-q", "-t", "rsa", "-b", "4096", "-N", "", "-f", keyPath).CombinedOutput(); err != nil {
-		return fmt.Errorf("create temporary SSH key: %w: %s", err, strings.TrimSpace(string(output)))
+		return cleanup(fmt.Errorf("create temporary SSH key: %w: %s", err, strings.TrimSpace(string(output))))
 	}
 	certificatePath := filepath.Join(directory, "identity-cert.pub")
 	if output, err := exec.Command("az", "ssh", "cert", "--public-key-file", keyPath+".pub", "--file", certificatePath).CombinedOutput(); err != nil {
-		return fmt.Errorf("request Entra SSH certificate: %w: %s", err, strings.TrimSpace(string(output)))
+		return cleanup(fmt.Errorf("request Entra SSH certificate: %w: %s", err, strings.TrimSpace(string(output))))
 	}
 	username, err := certificatePrincipal(certificatePath)
 	if err != nil {
-		return err
+		return cleanup(err)
 	}
 	port, err := availableLoopbackPort()
 	if err != nil {
-		return err
+		return cleanup(err)
 	}
-
 	tunnel := exec.Command("az", "network", "bastion", "tunnel",
 		"--subscription", route.Bastion.SubscriptionID,
 		"--name", route.Bastion.Name,
@@ -65,25 +94,20 @@ func StartTransferShell(route inventory.BastionRoute, vm inventory.VirtualMachin
 	)
 	tunnel.Stdout, tunnel.Stderr = os.Stdout, os.Stderr
 	if err := tunnel.Start(); err != nil {
-		return fmt.Errorf("start Bastion tunnel: %w", err)
+		return cleanup(fmt.Errorf("start Bastion tunnel: %w", err))
 	}
 	tunnelDone := make(chan error, 1)
 	go func() { tunnelDone <- tunnel.Wait() }()
-	defer stopTunnel(tunnel, tunnelDone)
-
 	if err := waitForTunnel(port, tunnelDone); err != nil {
-		return err
+		stopTunnel(tunnel, tunnelDone)
+		return cleanup(err)
 	}
-	rcPath := filepath.Join(directory, "bashrc")
-	if err := os.WriteFile(rcPath, []byte(transferRC(vm.Name, username, keyPath, certificatePath, port, route)), 0o600); err != nil {
-		return fmt.Errorf("write transfer shell configuration: %w", err)
-	}
-	bash := exec.Command("bash", "--noprofile", "--rcfile", rcPath, "-i")
-	bash.Stdin, bash.Stdout, bash.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := bash.Run(); err != nil {
-		return fmt.Errorf("transfer shell exited: %w", err)
-	}
-	return nil
+	return &entraSession{directory: directory, keyPath: keyPath, certificatePath: certificatePath, username: username, port: port, tunnel: tunnel, tunnelDone: tunnelDone}, nil
+}
+
+func (s *entraSession) Close() {
+	stopTunnel(s.tunnel, s.tunnelDone)
+	_ = os.RemoveAll(s.directory)
 }
 
 func certificatePrincipal(path string) (string, error) {

@@ -66,3 +66,14 @@ func TestEmptyDetailViewExplainsInventoryState(t *testing.T) {
 		t.Fatalf("hidden inventory view = %q", view)
 	}
 }
+
+func TestMountPathViewShowsSelectedMountpoint(t *testing.T) {
+	model := NewModel(nil, nil, Config{}, cache.TopologySnapshot{}, cache.VMInventorySnapshot{}, cache.Preferences{})
+	model.openMountPath(inventory.BastionRoute{Bastion: inventory.Bastion{Name: "bastion-prod", ResourceGroup: "network-rg"}}, inventory.VirtualMachine{Name: "api-01"})
+	view := model.mountPathView()
+	for _, value := range []string{"Mount api-01", "~/azssh/mnt/api-01", "bastion-prod", "Remote path", "enter mount"} {
+		if !strings.Contains(view, value) {
+			t.Errorf("mount path view does not contain %q:\n%s", value, view)
+		}
+	}
+}

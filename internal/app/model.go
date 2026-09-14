@@ -14,6 +14,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
 )
 
 type view int
@@ -22,7 +23,16 @@ const (
 	mainView view = iota
 	subscriptionFilterView
 	routeSelectorView
+	mountPathView
 	helpView
+)
+
+type routeAction int
+
+const (
+	routeConnect routeAction = iota
+	routeTransfer
+	routeMount
 )
 
 // Config supplies the process options required for an interactive Bastion SSH
@@ -63,17 +73,25 @@ type Model struct {
 	filterIndex int
 	filterDraft map[string]bool
 
-	routeTarget   *inventory.EligibleTarget
-	routeIndex    int
-	routeTransfer bool
+	routeTarget *inventory.EligibleTarget
+	routeIndex  int
+	routeAction routeAction
+	mountPath   textinput.Model
 
 	reviewCommand   []string
 	transferRequest *transferRequest
+	mountRequest    *mountRequest
 }
 
 type transferRequest struct {
 	route inventory.BastionRoute
 	vm    inventory.VirtualMachine
+}
+
+type mountRequest struct {
+	route      inventory.BastionRoute
+	vm         inventory.VirtualMachine
+	remotePath string
 }
 
 // ReviewCommand returns the requested Bastion command after the TUI exits.
@@ -89,6 +107,14 @@ func (m Model) TransferRequest() (inventory.BastionRoute, inventory.VirtualMachi
 	return m.transferRequest.route, m.transferRequest.vm, true
 }
 
+// MountRequest returns the selected Entra mount after the TUI exits.
+func (m Model) MountRequest() (inventory.BastionRoute, inventory.VirtualMachine, string, bool) {
+	if m.mountRequest == nil {
+		return inventory.BastionRoute{}, inventory.VirtualMachine{}, "", false
+	}
+	return m.mountRequest.route, m.mountRequest.vm, m.mountRequest.remotePath, true
+}
+
 // NewModel starts from local cache data and schedules its refresh from Init.
 func NewModel(client *azure.Client, store *cache.Store, config Config, topology cache.TopologySnapshot, vmInventory cache.VMInventorySnapshot, preferences cache.Preferences) Model {
 	useUnicode := unicodeFromEnv(os.Getenv)
@@ -101,6 +127,9 @@ func NewModel(client *azure.Client, store *cache.Store, config Config, topology 
 	vmList.FilterInput.Placeholder = "VM, subscription, resource group, Bastion"
 	vmList.Filter = allTermsFilter
 	vmList.DisableQuitKeybindings()
+	mountPath := textinput.New()
+	mountPath.Prompt = "Remote path > "
+	mountPath.SetValue(".")
 
 	m := Model{
 		client: client, store: store, config: config, keys: defaultKeyMap(),
@@ -109,6 +138,7 @@ func NewModel(client *azure.Client, store *cache.Store, config Config, topology 
 		hiddenSubscriptionIDs: hiddenSet(preferences.HiddenSubscriptionIDs),
 		favoriteVMIDs:         favoriteSet(preferences.FavoriteVMIDs),
 		vmList:                vmList,
+		mountPath:             mountPath,
 		spinner:               spinner.New(spinner.WithSpinner(spinner.Dot)),
 		loading:               true,
 		lastRefresh:           vmInventory.FetchedAt,
