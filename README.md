@@ -126,8 +126,9 @@ remote directory (default `.` for the remote home), and azssh mounts it at
 `~/azssh/mnt/<vm-name>`. SSHFS remains in the foreground until it exits or you
 press Ctrl-C; azssh then unmounts before removing its temporary identity and
 tunnel. It prints the exact mountpoint when SSHFS starts. The empty mountpoint
-directory remains for later use. azssh never
-installs SSHFS or FUSE and never uses `sudo`; install the platform runtime
+directory remains for later use with mode `0500` to discourage accidental local
+writes while unmounted; this does not make the remote filesystem read-only.
+azssh never installs SSHFS or FUSE and never uses `sudo`; install the platform runtime
 through your normal system process first. The mount uses `-F /dev/null` and
 explicit temporary SSH options, so it does not read or modify `~/.ssh`.
 On Linux, install the distribution's `sshfs` package and ensure the user can
