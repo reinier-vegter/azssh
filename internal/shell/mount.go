@@ -65,7 +65,10 @@ func mountpointForVM(vmName string) (string, error) {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
 	mountpoint := filepath.Join(home, "azssh", "mnt", vmName)
-	if err := os.MkdirAll(mountpoint, 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(mountpoint), 0o700); err != nil {
+		return "", fmt.Errorf("create mountpoint parent: %w", err)
+	}
+	if err := os.Mkdir(mountpoint, 0o500); err != nil && !os.IsExist(err) {
 		return "", fmt.Errorf("create mountpoint: %w", err)
 	}
 	info, err := os.Stat(mountpoint)
@@ -86,6 +89,9 @@ func mountpointForVM(vmName string) (string, error) {
 	}
 	if len(entries) != 0 {
 		return "", fmt.Errorf("mountpoint is not empty: %s", mountpoint)
+	}
+	if err := os.Chmod(mountpoint, 0o500); err != nil {
+		return "", fmt.Errorf("set mountpoint permissions: %w", err)
 	}
 	return mountpoint, nil
 }

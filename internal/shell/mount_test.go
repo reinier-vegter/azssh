@@ -37,11 +37,43 @@ func TestMountpointForVMCreatesAndRejectsNonemptyDirectory(t *testing.T) {
 	if want := filepath.Join(home, "azssh", "mnt", "api-01"); mountpoint != want {
 		t.Fatalf("mountpoint = %q, want %q", mountpoint, want)
 	}
+	assertMountpointMode(t, mountpoint, 0o500)
+	assertMountpointMode(t, filepath.Dir(mountpoint), 0o700)
+	if err := os.Chmod(mountpoint, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(mountpoint, "occupied"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := mountpointForVM("api-01"); err == nil || !strings.Contains(err.Error(), "not empty") {
 		t.Fatalf("non-empty mountpoint error = %v", err)
+	}
+	assertMountpointMode(t, mountpoint, 0o700)
+}
+
+func TestMountpointForVMRestoresNonWritableModeOnReuse(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mountpoint, err := mountpointForVM("api-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(mountpoint, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mountpointForVM("api-01"); err != nil {
+		t.Fatal(err)
+	}
+	assertMountpointMode(t, mountpoint, 0o500)
+}
+
+func assertMountpointMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("mountpoint mode = %#o, want %#o", got, want)
 	}
 }
 
