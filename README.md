@@ -106,14 +106,26 @@ Key bindings:
 | `b` | Choose a Bastion route when multiple routes are available |
 | `t` | Open an Entra-only `scp` transfer shell for the selected VM |
 | `m` | Mount a remote directory with Entra SSHFS |
+| `d` | Toggle readable network names / full resource IDs |
+| `pgup`, `pgdown` | Scroll VM details without changing the selected VM |
 | `r` | Refresh Azure inventory |
 | `U` | Update azssh when a newer release is available |
 | `?` | Show help |
 | `q` | Quit |
 
+Shortcut hints use `key: action`, preserving actual casing (`U` is uppercase).
+The finder adapts to terminal size with aligned side-by-side or stacked panels;
+long details scroll while controls stay visible. Network names are shown by
+default, with parent context for ambiguous names. Press `d` to inspect full IDs.
+Changing VM selection resets detail expansion and scrolling; Help preserves them.
+Printable shortcut keys remain text while editing search or the remote path.
+
 ### Update from the TUI
 
-When the release banner appears, press `U` outside search and confirm the update.
+When the header shows a newer version and `U: update`, press `U` outside search
+and confirm the update. The notice appears only in the main finder; release
+details are available in the update screen. Downloading, verification, and
+installation are shown as separate stages.
 Writable standalone installations update in place. Protected installations offer
 installation in `~/.local/bin/azssh` (recommended), an explicitly selected system
 update using sudo, or cancel. The sudo password prompt runs directly in the
@@ -123,7 +135,7 @@ Only installation is elevated, not downloads or the application.
 The updater verifies the platform-specific gzip against the release's
 `SHA256SUMS`, then replaces the executable atomically. Checksums detect corruption
 but share the release's GitHub trust boundary. Download or installation failures
-leave the old executable unchanged. Escape cancels downloading. Restart azssh
+leave the old executable unchanged. Escape cancels downloading or verification. Restart azssh
 after success to run the new version.
 
 User-local migration leaves the old system copy untouched and reports whether

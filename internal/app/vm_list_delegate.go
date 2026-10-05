@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type targetDelegate struct {
@@ -19,6 +20,14 @@ func newTargetDelegate(useUnicode bool) targetDelegate {
 	delegate.ShowDescription = true
 	delegate.SetHeight(2)
 	delegate.SetSpacing(0)
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().PaddingLeft(2)
+	delegate.Styles.NormalDesc = mutedStyle.PaddingLeft(2)
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Bold(true).
+		Border(lipgloss.NormalBorder(), false, false, false, true).
+		BorderLeftForeground(lipgloss.Color("39")).PaddingLeft(1)
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedTitle.Bold(false).Foreground(lipgloss.Color("245"))
+	delegate.Styles.DimmedTitle = mutedStyle.PaddingLeft(2)
+	delegate.Styles.DimmedDesc = mutedStyle.PaddingLeft(2)
 	return targetDelegate{DefaultDelegate: delegate, useUnicode: useUnicode}
 }
 

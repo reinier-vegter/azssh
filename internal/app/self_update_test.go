@@ -55,7 +55,7 @@ func TestSelfUpdateCancellationIgnoresStaleDownloads(t *testing.T) {
 
 func TestSelfUpdateInstallationAndCompletion(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "azssh")
-	m := Model{activeView: selfUpdateView, updatePhase: "downloading", updateDestination: target, availableUpdate: "v1.2.3", config: Config{Version: "v1.2.2"}}
+	m := Model{activeView: selfUpdateView, updatePhase: "verifying", updateDestination: target, availableUpdate: "v1.2.3", config: Config{Version: "v1.2.2"}}
 	updated, cmd := m.handleUpdateDownloaded(updateDownloadedMsg{binary: []byte("binary")})
 	m = updated.(Model)
 	if cmd == nil || m.updatePhase != "installing" {
@@ -81,7 +81,7 @@ func TestSelfUpdateInstallationAndCompletion(t *testing.T) {
 }
 
 func TestSelfUpdateFailures(t *testing.T) {
-	m := Model{updatePhase: "downloading"}
+	m := Model{updatePhase: "verifying"}
 	updated, cmd := m.handleUpdateDownloaded(updateDownloadedMsg{err: errors.New("checksum mismatch")})
 	if cmd != nil || updated.(Model).updatePhase != "failed" {
 		t.Fatal("download failure attempted installation")

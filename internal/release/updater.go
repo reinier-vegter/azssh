@@ -60,6 +60,21 @@ func inspectInstallation(current, home string) (Installation, error) {
 // Download verifies a release's compressed asset before extracting its binary.
 // Callers provide a deadline and must explicitly confirm installation separately.
 func Download(ctx context.Context, version string) ([]byte, error) {
+	artifact, err := Fetch(ctx, version)
+	if err != nil {
+		return nil, err
+	}
+	return Verify(artifact)
+}
+
+// Artifact keeps fetched data opaque until its integrity has been verified.
+type Artifact struct {
+	name            string
+	manifest, asset []byte
+}
+
+// Fetch downloads assets without installing or executing anything.
+func Fetch(ctx context.Context, version string) (Artifact, error) {
 	client := &http.Client{CheckRedirect: func(request *http.Request, via []*http.Request) error {
 		if request.URL.Scheme != "https" {
 			return fmt.Errorf("refusing non-HTTPS release redirect")
@@ -69,22 +84,41 @@ func Download(ctx context.Context, version string) ([]byte, error) {
 		}
 		return nil
 	}}
-	return download(ctx, client, releaseDownloadURL, version, runtime.GOOS, runtime.GOARCH)
+	return fetchArtifact(ctx, client, releaseDownloadURL, version, runtime.GOOS, runtime.GOARCH)
 }
 
 func download(ctx context.Context, client *http.Client, base, version, goos, arch string) ([]byte, error) {
+	artifact, err := fetchArtifact(ctx, client, base, version, goos, arch)
+	if err != nil {
+		return nil, err
+	}
+	return Verify(artifact)
+}
+
+func fetchArtifact(ctx context.Context, client *http.Client, base, version, goos, arch string) (Artifact, error) {
 	if !isReleaseVersion(version) || !strings.HasPrefix(version, "v") {
-		return nil, fmt.Errorf("invalid release version %q", version)
+		return Artifact{}, fmt.Errorf("invalid release version %q", version)
 	}
 	if (goos != "linux" && goos != "darwin") || (arch != "amd64" && arch != "arm64") {
-		return nil, fmt.Errorf("unsupported platform %s/%s", goos, arch)
+		return Artifact{}, fmt.Errorf("unsupported platform %s/%s", goos, arch)
 	}
 	name := "azssh_" + version + "_" + goos + "_" + arch + ".gz"
 	url := base + "/" + version + "/"
 	manifest, err := fetchBytes(ctx, client, url+"SHA256SUMS", 1<<20)
 	if err != nil {
-		return nil, fmt.Errorf("download checksums: %w", err)
+		return Artifact{}, fmt.Errorf("download checksums: %w", err)
 	}
+	asset, err := fetchBytes(ctx, client, url+name, maxAssetSize)
+	if err != nil {
+		return Artifact{}, fmt.Errorf("download binary: %w", err)
+	}
+	return Artifact{name: name, manifest: manifest, asset: asset}, nil
+}
+
+// Verify validates the checksum and extracts bounded executable bytes.
+func Verify(artifact Artifact) ([]byte, error) {
+	name, manifest, asset := artifact.name, artifact.manifest, artifact.asset
+	var err error
 	var expected []byte
 	for _, line := range strings.Split(string(manifest), "\n") {
 		fields := strings.Fields(line)
@@ -101,10 +135,6 @@ func download(ctx context.Context, client *http.Client, base, version, goos, arc
 	}
 	if expected == nil {
 		return nil, fmt.Errorf("checksum missing for %s", name)
-	}
-	asset, err := fetchBytes(ctx, client, url+name, maxAssetSize)
-	if err != nil {
-		return nil, fmt.Errorf("download binary: %w", err)
 	}
 	actual := sha256.Sum256(asset)
 	if !bytes.Equal(actual[:], expected) {
