@@ -10,6 +10,7 @@ import (
 	"azssh/internal/azure"
 	"azssh/internal/cache"
 	"azssh/internal/inventory"
+	"azssh/internal/release"
 	"azssh/internal/shell"
 
 	"charm.land/bubbles/v2/list"
@@ -25,6 +26,7 @@ const (
 	routeSelectorView
 	mountPathView
 	helpView
+	selfUpdateView
 )
 
 type routeAction int
@@ -62,13 +64,22 @@ type Model struct {
 	hiddenSubscriptionIDs map[string]bool
 	favoriteVMIDs         map[string]bool
 
-	vmList          list.Model
-	spinner         spinner.Model
-	loading         bool
-	status          string
-	lastRefresh     time.Time
-	useUnicode      bool
-	availableUpdate string
+	vmList            list.Model
+	spinner           spinner.Model
+	loading           bool
+	status            string
+	lastRefresh       time.Time
+	useUnicode        bool
+	availableUpdate   string
+	updateInstalled   bool
+	installation      release.Installation
+	updateIndex       int
+	updatePhase       string
+	updateText        string
+	updateGeneration  int
+	updateCancel      func()
+	updateDestination string
+	updateSudo        bool
 
 	filterIndex int
 	filterDraft map[string]bool
