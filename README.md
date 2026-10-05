@@ -60,9 +60,9 @@ confirm that your user can access `/dev/fuse` before mounting.
 Download the OS- and architecture-appropriate `.gz` binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest), then decompress and install it:
 
 ```sh
-gunzip azssh_v0.0.8_<os>_<arch>.gz
-chmod +x azssh_v0.0.8_<os>_<arch>
-sudo install -m 0755 azssh_v0.0.8_<os>_<arch> /usr/local/bin/azssh
+gunzip azssh_v0.0.9_<os>_<arch>.gz
+chmod +x azssh_v0.0.9_<os>_<arch>
+sudo install -m 0755 azssh_v0.0.9_<os>_<arch> /usr/local/bin/azssh
 ```
 
 For installation and future TUI updates without sudo, use a user-local location
@@ -70,7 +70,7 @@ instead of the `sudo install` command:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-install -m 0755 azssh_v0.0.6_<os>_<arch> "$HOME/.local/bin/azssh"
+install -m 0755 azssh_v0.0.9_<os>_<arch> "$HOME/.local/bin/azssh"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
