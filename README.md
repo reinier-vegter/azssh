@@ -66,15 +66,15 @@ instead of the `sudo install` command:
 ```sh
 
 mkdir -p "$HOME/.local/bin"
-install -m 0755 azssh_v0.0.9_<os>_<arch> "$HOME/.local/bin/azssh"
+install -m 0755 azssh_v0.1.0_<os>_<arch> "$HOME/.local/bin/azssh"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 For installation in the global system path, use the following commands:
 ```sh
-gunzip azssh_v0.0.8_<os>_<arch>.gz
-chmod +x azssh_v0.0.8_<os>_<arch>
-sudo install -m 0755 azssh_v0.0.8_<os>_<arch> /usr/local/bin/azssh
+gunzip azssh_v0.1.0_<os>_<arch>.gz
+chmod +x azssh_v0.1.0_<os>_<arch>
+sudo install -m 0755 azssh_v0.1.0_<os>_<arch> /usr/local/bin/azssh
 ```
 Note this breaks automatic updating from the TUI; use a user-local installation for that feature.
 
