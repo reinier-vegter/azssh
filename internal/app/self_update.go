@@ -223,7 +223,7 @@ func (m Model) renderSelfUpdate() (string, int) {
 				focus = lipgloss.Height(lipgloss.Wrap(strings.Join(lines, "\n"), max(1, m.screenWidth()-4), " /,=")) - 1
 			}
 		}
-		lines = append(lines, "", "Standalone releases only; use your package manager for managed installations.", "", "Release details", "https://github.com/reinier-vegter/azssh/releases")
+		lines = append(lines, "", "Release details", "https://github.com/reinier-vegter/azssh/releases")
 		return m.secondaryFrame(strings.Join(lines, "\n"), []shortcut{{"up/down", "choose"}, {"enter", "confirm"}, {"esc", "back"}, {"q", "quit"}}, focus)
 	} else {
 		text := m.updateText
