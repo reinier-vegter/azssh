@@ -60,6 +60,7 @@ confirm that your user can access `/dev/fuse` before mounting.
 Download the OS- and architecture-appropriate `.gz` binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest), then decompress and install it:
 
 ```sh
+<<<<<<< HEAD
 gunzip azssh_v0.0.9_<os>_<arch>.gz
 chmod +x azssh_v0.0.9_<os>_<arch>
 sudo install -m 0755 azssh_v0.0.9_<os>_<arch> /usr/local/bin/azssh
@@ -69,16 +70,22 @@ For installation and future TUI updates without sudo, use a user-local location
 instead of the `sudo install` command:
 
 ```sh
+=======
+>>>>>>> e4fa78b (readme)
 mkdir -p "$HOME/.local/bin"
 install -m 0755 azssh_v0.0.9_<os>_<arch> "$HOME/.local/bin/azssh"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Persist the PATH setting in your shell profile if needed.
+For installation in the global system path, use the following commands:
+```sh
+gunzip azssh_v0.0.8_<os>_<arch>.gz
+chmod +x azssh_v0.0.8_<os>_<arch>
+sudo install -m 0755 azssh_v0.0.8_<os>_<arch> /usr/local/bin/azssh
+```
+Note this breaks automatic updating from the TUI; use a user-local installation for that feature.
 
-Use `linux_amd64` or `linux_arm64` on Linux. Use `darwin_amd64` on Intel Macs
-or `darwin_arm64` on Apple silicon. Replace the placeholders with the downloaded
-release version, OS, and architecture.
+Persist the PATH setting in your shell profile if needed.
 
 ## Usage
 
