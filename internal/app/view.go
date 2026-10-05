@@ -33,6 +33,8 @@ func (m Model) View() tea.View {
 		content = m.mountPathView()
 	case helpView:
 		content = m.helpView()
+	case selfUpdateView:
+		content = m.selfUpdateScreen()
 	default:
 		content = m.mainScreen()
 	}
@@ -45,7 +47,7 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) updateBanner() string {
-	banner := "Update available: " + m.availableUpdate + " (current: " + m.config.Version + ")  https://github.com/reinier-vegter/azssh/releases"
+	banner := "Update: " + m.config.Version + " -> " + m.availableUpdate + "  U update  https://github.com/reinier-vegter/azssh/releases"
 	if m.width > 0 {
 		return updateStyle.Width(m.width).Render(banner)
 	}
@@ -276,6 +278,7 @@ func (m Model) helpView() string {
 		"f                Filter subscriptions",
 		"?                Open or close help",
 		"r                Refresh inventory",
+		"U                Update azssh when a newer release is available",
 		"q, ctrl+c        Quit",
 		"",
 		accentStyle.Render("Connection"),

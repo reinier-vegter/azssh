@@ -65,9 +65,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case updateCheckSucceededMsg:
+		if m.updateInstalled {
+			return m, nil
+		}
 		m.availableUpdate = msg.latestVersion
 		m.resizeList()
 		return m, nil
+	case installationInspectedMsg:
+		return m.handleInstallationInspected(msg)
+	case updateDownloadedMsg:
+		return m.handleUpdateDownloaded(msg)
+	case updateInstalledMsg:
+		return m.handleUpdateInstalled(msg)
 	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	case spinner.TickMsg:
@@ -117,6 +126,8 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateRouteSelector(msg)
 	case mountPathView:
 		return m.updateMountPath(msg)
+	case selfUpdateView:
+		return m.updateSelfUpdate(msg)
 	}
 
 	if m.vmList.SettingFilter() {
@@ -127,6 +138,9 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
+	}
+	if msg.String() == "U" {
+		return m.openSelfUpdate()
 	}
 	if key.Matches(msg, m.keys.Help) {
 		m.previousView, m.activeView = mainView, helpView

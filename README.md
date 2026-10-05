@@ -65,6 +65,17 @@ chmod +x azssh_v0.0.8_<os>_<arch>
 sudo install -m 0755 azssh_v0.0.8_<os>_<arch> /usr/local/bin/azssh
 ```
 
+For installation and future TUI updates without sudo, use a user-local location
+instead of the `sudo install` command:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 0755 azssh_v0.0.6_<os>_<arch> "$HOME/.local/bin/azssh"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Persist the PATH setting in your shell profile if needed.
+
 Use `linux_amd64` or `linux_arm64` on Linux. Use `darwin_amd64` on Intel Macs
 or `darwin_arm64` on Apple silicon. Replace the placeholders with the downloaded
 release version, OS, and architecture.
@@ -96,8 +107,31 @@ Key bindings:
 | `t` | Open an Entra-only `scp` transfer shell for the selected VM |
 | `m` | Mount a remote directory with Entra SSHFS |
 | `r` | Refresh Azure inventory |
+| `U` | Update azssh when a newer release is available |
 | `?` | Show help |
 | `q` | Quit |
+
+### Update from the TUI
+
+When the release banner appears, press `U` outside search and confirm the update.
+Writable standalone installations update in place. Protected installations offer
+installation in `~/.local/bin/azssh` (recommended), an explicitly selected system
+update using sudo, or cancel. The sudo password prompt runs directly in the
+terminal while the TUI is suspended; azssh never reads or stores the password.
+Only installation is elevated, not downloads or the application.
+
+The updater verifies the platform-specific gzip against the release's
+`SHA256SUMS`, then replaces the executable atomically. Checksums detect corruption
+but share the release's GitHub trust boundary. Download or installation failures
+leave the old executable unchanged. Escape cancels downloading. Restart azssh
+after success to run the new version.
+
+User-local migration leaves the old system copy untouched and reports whether
+PATH selects the local copy. Follow the displayed PATH guidance and reset your
+shell's command cache if needed (`hash -r` in Bash). Shell profiles are never
+modified automatically. After checking the new installation, you can manually
+remove the old standalone system copy. Use your package manager, not this updater,
+for package-managed installations.
 
 ## Cache and Security
 
