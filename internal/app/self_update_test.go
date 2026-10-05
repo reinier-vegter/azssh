@@ -116,3 +116,18 @@ func TestMigrationCompletionIncludesGuidance(t *testing.T) {
 		t.Fatalf("missing migration guidance: %s", text)
 	}
 }
+
+func TestUpdateConfirmationOmitsPackageManagerAdvice(t *testing.T) {
+	for _, writable := range []bool{true, false} {
+		m := Model{updatePhase: "confirm", installation: release.Installation{
+			Current: "/usr/local/bin/azssh", Local: "/home/user/.local/bin/azssh", Writable: writable,
+		}}
+		view := m.selfUpdateScreen()
+		if strings.Contains(view, "package manager") || strings.Contains(view, "Standalone releases only") {
+			t.Fatal("confirmation contains advice for nonexistent distribution channels")
+		}
+		if !strings.Contains(view, "Release details") {
+			t.Fatal("release details were removed along with the disclaimer")
+		}
+	}
+}

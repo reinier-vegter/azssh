@@ -142,8 +142,8 @@ User-local migration leaves the old system copy untouched and reports whether
 PATH selects the local copy. Follow the displayed PATH guidance and reset your
 shell's command cache if needed (`hash -r` in Bash). Shell profiles are never
 modified automatically. After checking the new installation, you can manually
-remove the old standalone system copy. Use your package manager, not this updater,
-for package-managed installations.
+remove the old standalone system copy. GitHub Releases is currently the only
+azssh distribution channel.
 
 ## Cache and Security
 
