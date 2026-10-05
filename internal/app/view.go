@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	accentStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
-	favoriteStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	mutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
-	updateStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("208")).Bold(true)
-	panelStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
+	accentStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+	favoriteStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	mutedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	notificationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	panelStyle        = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
 )
 
 // View renders the active application screen.
@@ -38,92 +38,80 @@ func (m Model) View() tea.View {
 	default:
 		content = m.mainScreen()
 	}
-	if m.availableUpdate != "" {
-		content = m.updateBanner() + "\n" + content
-	}
 	result := tea.NewView(content)
 	result.AltScreen = m.config.AltScreen
 	return result
 }
 
-func (m Model) updateBanner() string {
-	banner := "Update: " + m.config.Version + " -> " + m.availableUpdate + "  U update  https://github.com/reinier-vegter/azssh/releases"
-	if m.width > 0 {
-		return updateStyle.Width(m.width).Render(banner)
-	}
-	return updateStyle.Render(banner)
-}
-
 func (m Model) mainScreen() string {
-	header := accentStyle.Render("azssh") + strings.Repeat(" ", max(1, m.width-28)) + m.cacheStatus()
-	left := m.vmList.View()
-	right := m.detailView()
-	content := lipgloss.JoinHorizontal(lipgloss.Top, panelStyle.Render(left), "  ", panelStyle.Render(right))
-	if m.width > 0 && m.width < 86 {
-		content = lipgloss.JoinVertical(lipgloss.Left, panelStyle.Render(left), panelStyle.Render(right))
+	layout := m.finderLayout()
+	if layout.tooSmall {
+		return m.smallScreen()
 	}
-	footer := mutedStyle.Render("enter connect  t transfer  m mount  shift+enter review  / search  x favorite  f filters  ? help  r refresh  q quit")
-	if m.status != "" {
-		footer = footer + "\n" + m.statusStyle().Render(m.status)
+	list := m.vmList
+	list.SetSize(layout.leftWidth-4, layout.leftHeight-2)
+	left := renderPanel(viewportText(list.View(), layout.leftWidth-4, layout.leftHeight-2, 0), layout.leftWidth, layout.leftHeight)
+	right := renderPanel(viewportText(m.detailView(), layout.rightWidth-4, layout.rightHeight-2, m.detailOffset), layout.rightWidth, layout.rightHeight)
+	content := lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
+	if layout.stacked {
+		content = lipgloss.JoinVertical(lipgloss.Left, left, right)
 	}
-	return header + "\n" + strings.Repeat("─", max(1, m.width)) + "\n" + content + "\n" + footer
+	rule := "-"
+	if m.useUnicode {
+		rule = "─"
+	}
+	return layout.header + "\n" + mutedStyle.Render(strings.Repeat(rule, m.screenWidth())) + "\n" + content + "\n" + layout.footer
 }
 
 func (m Model) detailView() string {
 	target := m.selectedTarget()
 	if target == nil {
-		return m.emptyDetailView()
+		return m.wrapDetail(m.emptyDetailView())
 	}
 	route := target.Routes[0]
-	lines := []string{
-		accentStyle.Render(target.VM.Name),
-		"",
-		detailLine("Subscription", m.subscriptionName(target.VM.SubscriptionID)),
-		detailLine("Resource group", target.VM.ResourceGroup),
-		"",
-	}
-	lines = appendDetailLine(lines, "Location", target.VM.Location)
-	lines = appendDetailLine(lines, "Size", target.VM.Size)
-	lines = appendDetailLine(lines, "OS", target.VM.OSType)
+	width := m.detailWidth()
+	lines := []string{accentStyle.Render(lipgloss.Wrap(target.VM.Name, width, "-")), ""}
+	lines = append(lines, renderDetailRows([]detailRow{
+		{"Subscription", m.subscriptionName(target.VM.SubscriptionID)},
+		{"Resource group", target.VM.ResourceGroup},
+		{"Location", target.VM.Location}, {"Size", target.VM.Size}, {"OS", target.VM.OSType},
+	}, width)...)
 	if len(target.VM.PrivateIPs) > 0 || len(target.VM.SubnetIDs) > 0 || len(target.VM.VNetIDs) > 0 {
 		lines = append(lines, "", accentStyle.Render("Network"))
-		if len(target.VM.PrivateIPs) > 0 {
-			lines = append(lines, detailLine("Private IPs", strings.Join(target.VM.PrivateIPs, ", ")))
-		}
-		if len(target.VM.SubnetIDs) > 0 {
-			lines = append(lines, detailLine("Subnets", strings.Join(target.VM.SubnetIDs, ", ")))
-		}
-		if len(target.VM.VNetIDs) > 0 {
-			lines = append(lines, detailLine("VNets", strings.Join(target.VM.VNetIDs, ", ")))
-		}
+		lines = append(lines, renderDetailRows([]detailRow{
+			{"Private IPs", strings.Join(target.VM.PrivateIPs, ", ")},
+			{"VNets", networkNames(target.VM.VNetIDs, m.fullNetworkIDs)},
+			{"Subnets", networkNames(target.VM.SubnetIDs, m.fullNetworkIDs)},
+		}, width)...)
 	}
 	if disk := diskDescription(target.VM.OSDiskSizeGB, target.VM.OSDiskStorageType); disk != "" || target.VM.DataDiskCount > 0 {
 		lines = append(lines, "", accentStyle.Render("Storage"))
-		if disk != "" {
-			lines = append(lines, detailLine("OS disk", disk))
-		}
+		rows := []detailRow{{"OS disk", disk}}
 		if target.VM.DataDiskCount > 0 {
-			lines = append(lines, detailLine("Data disks", fmt.Sprintf("%d", target.VM.DataDiskCount)))
+			rows = append(rows, detailRow{"Data disks", fmt.Sprintf("%d", target.VM.DataDiskCount)})
 		}
+		lines = append(lines, renderDetailRows(rows, width)...)
 	}
 	if tags := displayTags(target.VM.Tags); len(tags) > 0 {
 		lines = append(lines, "", accentStyle.Render("Tags"))
+		rows := make([]detailRow, 0, len(tags))
 		for _, tag := range tags {
-			lines = append(lines, detailLine(tag.Key, tag.Value))
+			rows = append(rows, detailRow{tag.Key, tag.Value})
 		}
+		lines = append(lines, renderDetailRows(rows, width)...)
 	}
-	lines = append(lines, "", accentStyle.Render("Connection route"), detailLine("Bastion", route.Bastion.Name), detailLine("Bastion RG", route.Bastion.ResourceGroup))
+	lines = append(lines, "", accentStyle.Render("Connection route"))
 	routeType := route.RouteType
 	if len(target.Routes) > 1 {
 		routeType += " (preferred)"
 	}
-	lines = append(lines, detailLine("VNet route", routeType))
+	lines = append(lines, renderDetailRows([]detailRow{{"Bastion", route.Bastion.Name}, {"Bastion RG", route.Bastion.ResourceGroup}, {"VNet route", routeType}}, width)...)
 	if len(target.Routes) > 1 {
-		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d routes available; enter, t, m, or b to choose", len(target.Routes))))
+		lines = append(lines, "", mutedStyle.Render(fmt.Sprintf("%d eligible Bastion routes", len(target.Routes))))
 	} else {
-		lines = append(lines, "", mutedStyle.Render("enter connect  t transfer  m mount  shift+enter review command"))
+		lines = append(lines, "", mutedStyle.Render("One eligible Bastion route"))
 	}
-	return m.wrapDetail(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) emptyDetailView() string {
@@ -140,17 +128,6 @@ func (m Model) emptyDetailView() string {
 		return mutedStyle.Render("No VMs match the current search.")
 	}
 	return mutedStyle.Render("Select an eligible VM to inspect its Bastion route.")
-}
-
-func appendDetailLine(lines []string, label, value string) []string {
-	if value != "" {
-		return append(lines, detailLine(label, value))
-	}
-	return lines
-}
-
-func detailLine(label, value string) string {
-	return fmt.Sprintf("%-14s %s", label, value)
 }
 
 func diskDescription(sizeGB int, storageType string) string {
@@ -193,16 +170,20 @@ func (m Model) wrapDetail(content string) string {
 }
 
 func (m Model) detailWidth() int {
-	if m.width <= 0 {
-		return 0
+	width := m.screenWidth()
+	if width < 86 {
+		return max(1, width-4)
 	}
-	if m.width < 86 {
-		return max(20, m.width-6)
-	}
-	return max(30, m.width-m.width/2-6)
+	left := (width - 2) / 2
+	return max(1, width-2-left-4)
 }
 
 func (m Model) subscriptionFilterView() string {
+	content, _ := m.renderSubscriptionFilter()
+	return content
+}
+
+func (m Model) renderSubscriptionFilter() (string, int) {
 	lines := []string{
 		accentStyle.Render("Filter subscriptions"),
 		"",
@@ -225,13 +206,22 @@ func (m Model) subscriptionFilterView() string {
 		}
 		lines = append(lines, fmt.Sprintf("%s [%s] %s", cursor, mark, subscription.Name))
 	}
-	lines = append(lines, "", fmt.Sprintf("%d of %d subscriptions shown", visible, len(m.subscriptions)), "", mutedStyle.Render("space toggle  a all  n none  enter apply  esc cancel  ? help"))
-	return panelStyle.Render(strings.Join(lines, "\n"))
+	lines = append(lines, "", fmt.Sprintf("%d of %d subscriptions shown", visible, len(m.subscriptions)))
+	focus := -1
+	if m.filterIndex < len(m.subscriptions) {
+		focus = lipgloss.Height(lipgloss.Wrap(strings.Join(lines[:4+m.filterIndex], "\n"), m.screenWidth()-4, " /,="))
+	}
+	return m.secondaryFrame(strings.Join(lines, "\n"), []shortcut{{"space", "toggle"}, {"a", "all"}, {"n", "none"}, {"enter", "apply"}, {"esc", "cancel"}, {"?", "help"}, {"q", "quit"}}, focus)
 }
 
 func (m Model) routeSelectorView() string {
+	content, _ := m.renderRouteSelector()
+	return content
+}
+
+func (m Model) renderRouteSelector() (string, int) {
 	if m.routeTarget == nil {
-		return m.mainScreen()
+		return m.mainScreen(), 0
 	}
 	lines := []string{accentStyle.Render("Select Bastion for " + m.routeTarget.VM.Name), ""}
 	for index, route := range m.routeTarget.Routes {
@@ -242,13 +232,18 @@ func (m Model) routeSelectorView() string {
 		lines = append(lines, fmt.Sprintf("%s %-22s %s / %s   %s", cursor, route.Bastion.Name, m.subscriptionName(route.Bastion.SubscriptionID), route.Bastion.ResourceGroup, route.RouteType))
 	}
 	action := []string{"connect", "transfer", "mount"}[m.routeAction]
-	lines = append(lines, "", mutedStyle.Render("enter "+action+"  esc cancel  ? help"))
-	return panelStyle.Render(strings.Join(lines, "\n"))
+	focus := lipgloss.Height(lipgloss.Wrap(strings.Join(lines[:2+m.routeIndex], "\n"), m.screenWidth()-4, " /,="))
+	return m.secondaryFrame(strings.Join(lines, "\n"), []shortcut{{"enter", action}, {"esc", "cancel"}, {"?", "help"}, {"q", "quit"}}, focus)
 }
 
 func (m Model) mountPathView() string {
+	content, _ := m.renderMountPath()
+	return content
+}
+
+func (m Model) renderMountPath() (string, int) {
 	if m.routeTarget == nil || len(m.routeTarget.Routes) != 1 {
-		return m.mainScreen()
+		return m.mainScreen(), 0
 	}
 	route := m.routeTarget.Routes[0]
 	lines := []string{
@@ -259,44 +254,53 @@ func (m Model) mountPathView() string {
 		"",
 		m.mountPath.View(),
 		"",
-		mutedStyle.Render("enter mount  esc cancel"),
 	}
 	if m.status != "" {
 		lines = append(lines, m.statusStyle().Render(m.status))
 	}
-	return panelStyle.Render(strings.Join(lines, "\n"))
+	focus := lipgloss.Height(lipgloss.Wrap(strings.Join(lines[:5], "\n"), max(1, m.screenWidth()-4), " /,="))
+	return m.secondaryFrame(strings.Join(lines, "\n"), []shortcut{{"enter", "mount"}, {"esc", "cancel"}, {"ctrl+c", "quit"}}, focus)
 }
 
 func (m Model) helpView() string {
+	content, _ := m.renderHelp()
+	return content
+}
+
+func (m Model) renderHelp() (string, int) {
 	lines := []string{
 		accentStyle.Render("Help"),
 		"",
 		accentStyle.Render("Navigation"),
-		"up/k, down/j     Move selection",
-		"/                Focus VM search",
-		"x                Toggle selected VM favorite",
-		"f                Filter subscriptions",
-		"?                Open or close help",
-		"r                Refresh inventory",
-		"U                Update azssh when a newer release is available",
-		"q, ctrl+c        Quit",
+		shortcutLabel("up/k, down/j", "move selection"),
+		shortcutLabel("/", "search VMs"),
+		shortcutLabel("x", "toggle selected VM favorite"),
+		shortcutLabel("f", "filter subscriptions"),
+		shortcutLabel("?", "open or close help"),
+		shortcutLabel("r", "refresh inventory"),
+		shortcutLabel("U", "update when a newer release is available"),
+		shortcutLabel("q, ctrl+c", "quit"),
 		"",
 		accentStyle.Render("Connection"),
-		"enter            Connect, or select a Bastion route",
-		"shift+enter      Review the command in your shell, then confirm",
-		"b                Choose an eligible Bastion route",
-		"t                Open an Entra-only scp transfer shell",
-		"m                Mount a remote directory with Entra SSHFS",
+		shortcutLabel("enter", "connect or select a Bastion route"),
+		shortcutLabel("shift+enter", "review command in your shell"),
+		shortcutLabel("b", "choose a Bastion route"),
+		shortcutLabel("t", "open an Entra-only scp transfer shell"),
+		shortcutLabel("m", "mount a directory with Entra SSHFS"),
+		"", accentStyle.Render("Details"),
+		shortcutLabel("d", "toggle full network IDs / readable names"),
+		shortcutLabel("pgup/pgdown", "scroll details without moving VM selection"),
 		"",
 		accentStyle.Render("Filter subscriptions"),
-		"space            Toggle subscription visibility",
-		"a / n            Show all / hide all",
-		"enter            Apply filters",
-		"esc              Cancel filter changes or close a view",
-		"",
-		mutedStyle.Render("esc, ?           Return"),
+		shortcutLabel("space", "toggle subscription visibility"),
+		shortcutLabel("a / n", "show all / hide all"),
+		shortcutLabel("enter", "apply filters"),
+		shortcutLabel("esc", "cancel changes or close a view"),
 	}
-	return panelStyle.Render(strings.Join(lines, "\n"))
+	if m.status != "" {
+		lines = append(lines, "", accentStyle.Render("Current status"), m.status)
+	}
+	return m.secondaryFrame(strings.Join(lines, "\n"), []shortcut{{"esc", "back"}, {"?", "back"}, {"q", "quit"}}, -1)
 }
 
 func (m Model) cacheStatus() string {
@@ -321,18 +325,11 @@ func (m Model) statusStyle() lipgloss.Style {
 }
 
 func (m *Model) resizeList() {
-	if m.width <= 0 || m.height <= 0 {
+	if m.vmList.Width() <= 0 {
 		return
 	}
-	listWidth := max(30, m.width/2-4)
-	if m.width < 86 {
-		listWidth = max(30, m.width-6)
-	}
-	bannerHeight := 0
-	if m.availableUpdate != "" {
-		bannerHeight = 1
-	}
-	m.vmList.SetSize(listWidth, max(8, m.height-8-bannerHeight))
+	layout := m.finderLayout()
+	m.vmList.SetSize(max(1, layout.leftWidth-4), max(1, layout.leftHeight-2))
 }
 
 func max(a, b int) int {

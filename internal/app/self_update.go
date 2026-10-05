@@ -24,6 +24,12 @@ type updateDownloadedMsg struct {
 	err        error
 }
 
+type updateFetchedMsg struct {
+	generation int
+	artifact   release.Artifact
+	err        error
+}
+
 type updateInstalledMsg struct {
 	generation int
 	err        error
@@ -99,29 +105,49 @@ func (m Model) updateSelfUpdate(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if !m.installation.Writable && !m.updateSudo {
 			m.updateDestination = m.installation.Local
 		}
-		m.updatePhase, m.updateText = "downloading", "Downloading and verifying release… (esc cancels)"
+		m.updatePhase, m.updateText = "downloading", "Downloading release assets…"
+		m.secondaryOffset, m.secondaryManualScroll = 0, false
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		m.updateCancel = cancel
 		version, generation := m.availableUpdate, m.updateGeneration
 		return m, func() tea.Msg {
 			defer cancel()
-			binary, err := release.Download(ctx, version)
-			return updateDownloadedMsg{generation: generation, binary: binary, err: err}
+			artifact, err := release.Fetch(ctx, version)
+			return updateFetchedMsg{generation: generation, artifact: artifact, err: err}
 		}
 	}
 	return m, nil
 }
 
-func (m Model) handleUpdateDownloaded(msg updateDownloadedMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleUpdateFetched(msg updateFetchedMsg) (tea.Model, tea.Cmd) {
 	if msg.generation != m.updateGeneration || m.updatePhase != "downloading" {
+		return m, nil
+	}
+	if msg.err != nil {
+		m.updateCancel = nil
+		m.updatePhase, m.updateText = "failed", "Download failed: "+msg.err.Error()+"\nCheck connectivity and release availability, then return and try again."
+		return m, nil
+	}
+	m.updatePhase, m.updateText = "verifying", "Verifying SHA-256 and extracting the release…"
+	m.secondaryOffset, m.secondaryManualScroll = 0, false
+	generation := m.updateGeneration
+	return m, func() tea.Msg {
+		binary, err := release.Verify(msg.artifact)
+		return updateDownloadedMsg{generation: generation, binary: binary, err: err}
+	}
+}
+
+func (m Model) handleUpdateDownloaded(msg updateDownloadedMsg) (tea.Model, tea.Cmd) {
+	if msg.generation != m.updateGeneration || m.updatePhase != "verifying" {
 		return m, nil
 	}
 	m.updateCancel = nil
 	if msg.err != nil {
-		m.updatePhase, m.updateText = "failed", "Update failed: "+msg.err.Error()
+		m.updatePhase, m.updateText = "failed", "Verification failed: "+msg.err.Error()+"\nThe executable was not replaced. Return and retry with a fresh download."
 		return m, nil
 	}
 	m.updatePhase, m.updateText = "installing", "Installing verified release at "+m.updateDestination+"…"
+	m.secondaryOffset, m.secondaryManualScroll = 0, false
 	generation, destination := m.updateGeneration, m.updateDestination
 	if m.updateSudo {
 		command, err := release.SudoCommand(destination, msg.binary)
@@ -141,8 +167,9 @@ func (m Model) handleUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd
 	if msg.generation != m.updateGeneration || m.updatePhase != "installing" {
 		return m, nil
 	}
+	m.secondaryOffset, m.secondaryManualScroll = 0, false
 	if msg.err != nil {
-		m.updatePhase, m.updateText = "failed", "Update failed or sudo cancelled: "+msg.err.Error()
+		m.updatePhase, m.updateText = "failed", "Installation failed or sudo cancelled: "+msg.err.Error()+"\nCheck destination permissions or retry the chosen installation method."
 		return m, nil
 	}
 	m.updatePhase = "done"
@@ -153,38 +180,67 @@ func (m Model) handleUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd
 	}
 	m.updateInstalled = true
 	m.availableUpdate = ""
-	m.resizeList()
 	return m, nil
 }
 
 func (m Model) selfUpdateScreen() string {
+	content, _ := m.renderSelfUpdate()
+	return content
+}
+
+func (m Model) renderSelfUpdate() (string, int) {
 	lines := []string{accentStyle.Render("Update azssh"), ""}
 	if m.updatePhase == "confirm" {
-		lines = append(lines, fmt.Sprintf("Update %s → %s?", m.config.Version, m.availableUpdate), "Current installation: "+m.installation.Current, "")
-		var options []string
-		if m.installation.Writable {
-			options = []string{"Update " + m.installation.Current, "Cancel"}
-		} else {
-			lines = append(lines, "Updating this location requires administrator privileges.", "")
-			options = []string{"Install in " + m.installation.Local + " instead (recommended)", "Update " + m.installation.Current + " using sudo", "Cancel"}
+		transition := " -> "
+		if m.useUnicode {
+			transition = " → "
 		}
+		lines = append(lines, m.config.Version+transition+m.availableUpdate, "", "Current location", m.installation.Current, "")
+		var options, details []string
+		if m.installation.Writable {
+			options = []string{"Update in place", "Cancel"}
+			details = []string{m.installation.Current + " · no sudo", ""}
+		} else {
+			lines = append(lines, "This location requires administrator privileges.", "")
+			options = []string{"Install for my user (recommended)", "Update system installation", "Cancel"}
+			details = []string{m.installation.Local + " · no sudo", m.installation.Current + " · sudo required", ""}
+		}
+		focus := -1
 		for index, option := range options {
 			cursor := "  "
 			if index == m.updateIndex {
 				cursor = "> "
 			}
-			lines = append(lines, cursor+option)
+			label := cursor + option
+			if index == m.updateIndex {
+				label = accentStyle.Render(label)
+			}
+			lines = append(lines, label)
+			if details[index] != "" {
+				lines = append(lines, mutedStyle.Render("    "+details[index]))
+			}
+			if index == m.updateIndex {
+				focus = lipgloss.Height(lipgloss.Wrap(strings.Join(lines, "\n"), max(1, m.screenWidth()-4), " /,=")) - 1
+			}
 		}
-		lines = append(lines, "", "Standalone release binaries only; use your package manager for managed installations.", mutedStyle.Render("up/down choose  enter confirm  esc cancel"))
+		lines = append(lines, "", "Standalone releases only; use your package manager for managed installations.", "", "Release details", "https://github.com/reinier-vegter/azssh/releases")
+		return m.secondaryFrame(strings.Join(lines, "\n"), []shortcut{{"up/down", "choose"}, {"enter", "confirm"}, {"esc", "back"}, {"q", "quit"}}, focus)
 	} else {
-		lines = append(lines, m.updateText)
-		if m.updatePhase != "installing" {
-			lines = append(lines, "", mutedStyle.Render("esc return"))
+		text := m.updateText
+		if m.updatePhase == "failed" {
+			parts := strings.SplitN(text, "\n", 2)
+			text = errorStyle.Render(parts[0])
+			if len(parts) == 2 {
+				text += "\n" + parts[1]
+			}
 		}
+		lines = append(lines, text)
+		controls := []shortcut{}
+		if m.updatePhase == "downloading" || m.updatePhase == "verifying" {
+			controls = append(controls, shortcut{"esc", "cancel"}, shortcut{"q", "quit"})
+		} else if m.updatePhase != "installing" {
+			controls = append(controls, shortcut{"esc", "back"}, shortcut{"q", "quit"})
+		}
+		return m.secondaryFrame(strings.Join(lines, "\n"), controls, -1)
 	}
-	content := strings.Join(lines, "\n")
-	if m.width > 0 {
-		content = lipgloss.Wrap(content, max(20, m.width-6), " /,=")
-	}
-	return panelStyle.Render(content)
 }

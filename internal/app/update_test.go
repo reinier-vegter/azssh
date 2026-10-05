@@ -301,7 +301,10 @@ func TestUpdateCheckShowsBanner(t *testing.T) {
 	if got := result.availableUpdate; got != "v0.0.2" {
 		t.Fatalf("available update = %q", got)
 	}
-	if !strings.Contains(result.updateBanner(), "https://github.com/reinier-vegter/azssh/releases") {
-		t.Fatal("update banner does not include the releases URL")
+	if !strings.Contains(result.mainHeader(), "available") || !strings.Contains(result.mainHeader(), ": update") {
+		t.Fatal("header does not advertise the update action")
+	}
+	if strings.Contains(result.mainHeader(), "https://") {
+		t.Fatal("header includes an unnecessary release URL")
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/lipgloss/v2"
 )
 
 type view int
@@ -64,22 +65,28 @@ type Model struct {
 	hiddenSubscriptionIDs map[string]bool
 	favoriteVMIDs         map[string]bool
 
-	vmList            list.Model
-	spinner           spinner.Model
-	loading           bool
-	status            string
-	lastRefresh       time.Time
-	useUnicode        bool
-	availableUpdate   string
-	updateInstalled   bool
-	installation      release.Installation
-	updateIndex       int
-	updatePhase       string
-	updateText        string
-	updateGeneration  int
-	updateCancel      func()
-	updateDestination string
-	updateSudo        bool
+	vmList                  list.Model
+	spinner                 spinner.Model
+	loading                 bool
+	status                  string
+	lastRefresh             time.Time
+	useUnicode              bool
+	availableUpdate         string
+	updateInstalled         bool
+	installation            release.Installation
+	updateIndex             int
+	updatePhase             string
+	updateText              string
+	updateGeneration        int
+	updateCancel            func()
+	updateDestination       string
+	updateSudo              bool
+	fullNetworkIDs          bool
+	detailOffset            int
+	detailVMID              string
+	secondaryOffset         int
+	previousSecondaryOffset int
+	secondaryManualScroll   bool
 
 	filterIndex int
 	filterDraft map[string]bool
@@ -131,6 +138,15 @@ func NewModel(client *azure.Client, store *cache.Store, config Config, topology 
 	useUnicode := unicodeFromEnv(os.Getenv)
 	vmList := list.New(nil, newTargetDelegate(useUnicode), 48, 16)
 	vmList.Title = "Eligible VMs"
+	vmList.Styles.TitleBar = lipgloss.NewStyle().PaddingBottom(1)
+	vmList.Styles.Title = accentStyle
+	vmList.Styles.StatusBar = mutedStyle.PaddingBottom(1)
+	vmList.Styles.StatusEmpty = mutedStyle
+	vmList.Styles.StatusBarFilterCount = mutedStyle
+	vmList.Styles.StatusBarActiveFilter = accentStyle
+	vmList.Styles.Filter.Focused.Prompt = accentStyle
+	vmList.Styles.Filter.Blurred.Prompt = mutedStyle
+	vmList.Styles.Filter.Cursor.Color = lipgloss.Color("39")
 	vmList.SetShowHelp(false)
 	vmList.SetShowPagination(false)
 	vmList.SetStatusBarItemName("VM", "VMs")
@@ -159,6 +175,10 @@ func NewModel(client *azure.Client, store *cache.Store, config Config, topology 
 		return strings.ToLower(m.subscriptions[i].Name) < strings.ToLower(m.subscriptions[j].Name)
 	})
 	m.rebuildList()
+	if target := m.selectedTarget(); target != nil {
+		m.detailVMID = target.VM.ID
+	}
+	m.resizeList()
 	return m
 }
 

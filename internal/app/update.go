@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Init begins cache validation after the first view is rendered.
@@ -25,6 +26,38 @@ func (m Model) Init() tea.Cmd {
 // Update handles terminal input, background inventory refreshes, and shell
 // completion messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	updated, cmd := m.update(msg)
+	next := updated.(Model)
+	selectedID := ""
+	if target := next.selectedTarget(); target != nil {
+		selectedID = target.VM.ID
+	}
+	if selectedID != next.detailVMID {
+		next.detailVMID, next.detailOffset, next.fullNetworkIDs = selectedID, 0, false
+	}
+	if next.activeView != m.activeView {
+		next.secondaryManualScroll = false
+		if next.activeView == helpView {
+			next.previousSecondaryOffset, next.secondaryOffset = m.secondaryOffset, 0
+		} else if m.activeView == helpView {
+			next.secondaryOffset = m.previousSecondaryOffset
+		} else {
+			next.secondaryOffset = 0
+		}
+	}
+	next.resizeList()
+	layout := next.finderLayout()
+	maxOffset := max(0, lipgloss.Height(next.detailView())-max(1, layout.rightHeight-2))
+	if next.detailOffset > maxOffset {
+		next.detailOffset = maxOffset
+	}
+	if next.activeView != mainView {
+		next.secondaryOffset = min(next.secondaryOffset, next.secondaryScrollLimit())
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.EnvMsg:
 		useUnicode := unicodeFromEnv(msg.Getenv)
@@ -36,7 +69,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.resizeList()
 		return m, nil
 	case refreshSucceededMsg:
 		m.loading = false
@@ -69,12 +101,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.availableUpdate = msg.latestVersion
-		m.resizeList()
 		return m, nil
 	case installationInspectedMsg:
 		return m.handleInstallationInspected(msg)
 	case updateDownloadedMsg:
 		return m.handleUpdateDownloaded(msg)
+	case updateFetchedMsg:
+		return m.handleUpdateFetched(msg)
 	case updateInstalledMsg:
 		return m.handleUpdateInstalled(msg)
 	case tea.KeyPressMsg:
@@ -114,8 +147,33 @@ func (m Model) updateCheckCmd() tea.Cmd {
 }
 
 func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.activeView != mainView {
+		if msg.String() == "pgup" || msg.String() == "pgdown" {
+			step := max(1, m.screenHeight()/2)
+			if msg.String() == "pgup" {
+				step = -step
+			}
+			if m.activeView == subscriptionFilterView {
+				m.secondaryManualScroll = false
+				m.filterIndex = max(0, min(len(m.subscriptions)-1, m.filterIndex+step/3))
+				return m, nil
+			}
+			if m.activeView == routeSelectorView && m.routeTarget != nil {
+				m.secondaryManualScroll = false
+				m.routeIndex = max(0, min(len(m.routeTarget.Routes)-1, m.routeIndex+step/3))
+				return m, nil
+			}
+			m.secondaryOffset = max(0, m.secondaryOffset+step)
+			m.secondaryManualScroll = true
+			return m, nil
+		}
+		m.secondaryManualScroll = false
+	}
 	switch m.activeView {
 	case helpView:
+		if key.Matches(msg, m.keys.Quit) {
+			return m, tea.Quit
+		}
 		if key.Matches(msg, m.keys.Help, m.keys.Cancel) {
 			m.activeView = m.previousView
 		}
@@ -130,6 +188,9 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateSelfUpdate(msg)
 	}
 
+	if msg.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
 	if m.vmList.SettingFilter() {
 		var cmd tea.Cmd
 		m.vmList, cmd = m.vmList.Update(msg)
@@ -138,6 +199,22 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
+	}
+	if msg.String() == "d" {
+		if target := m.selectedTarget(); target != nil && len(target.VM.SubnetIDs)+len(target.VM.VNetIDs) > 0 {
+			m.fullNetworkIDs = !m.fullNetworkIDs
+			m.detailOffset = 0
+		}
+		return m, nil
+	}
+	if msg.String() == "pgup" || msg.String() == "pgdown" {
+		step := max(1, m.finderLayout().rightHeight-3)
+		if msg.String() == "pgup" {
+			m.detailOffset = max(0, m.detailOffset-step)
+		} else {
+			m.detailOffset += step
+		}
+		return m, nil
 	}
 	if msg.String() == "U" {
 		return m.openSelfUpdate()
@@ -335,7 +412,7 @@ func (m Model) updateMountPath(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.activeView = mainView
 		return m, nil
 	}
-	if key.Matches(msg, m.keys.Quit) {
+	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
 	}
 	if msg.Key().Code == tea.KeyEnter {
