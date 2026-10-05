@@ -1,7 +1,9 @@
 package shell
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -46,8 +48,74 @@ func TestReviewCommandPreservesAzureArguments(t *testing.T) {
 }
 
 func TestQuoteCommand(t *testing.T) {
-	if got, want := quoteCommand([]string{"az", "bastion name", "contains'quote"}), "'az' 'bastion name' 'contains'\\''quote'"; got != want {
+	if got, want := quoteCommand([]string{"az", "bastion name", "contains'quote"}), "az 'bastion name' 'contains'\\''quote'"; got != want {
 		t.Fatalf("quoteCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestCopyableCommandQuotesValuesOnly(t *testing.T) {
+	arguments := []string{"az", "network", "bastion", "ssh", "--subscription", "sub-id", "--name", "bastion name", "--auth-type", "AAD", "--username", "--looks-like-a-flag", "--ssh-key", ""}
+	want := "az network bastion ssh --subscription 'sub-id' --name 'bastion name' --auth-type 'AAD' --username '--looks-like-a-flag' --ssh-key ''"
+	if got := quoteCommand(arguments); got != want {
+		t.Fatalf("display=%q, want %q", got, want)
+	}
+}
+
+func TestCopyableCommandRoundTripsValues(t *testing.T) {
+	arguments := []string{"printf", "--format", "name with spaces", "--quote", "O'Brien", "--path", `C:\folder\file`, "--syntax", "$(echo unsafe); * & |", "--empty", "", "--multiline", "line one\nline two"}
+	// Parse the displayed command as shell words without executing it.
+	parse := exec.Command("/bin/sh", "-c", "set -- "+quoteCommand(arguments)+"; printf '%s\\000' \"$@\"")
+	output, err := parse.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Split(strings.TrimSuffix(string(output), "\x00"), "\x00"); !slices.Equal(got, arguments) {
+		t.Fatalf("parsed=%q, want %q", got, arguments)
+	}
+}
+
+func TestFishCommandQuotesValuesForFish(t *testing.T) {
+	arguments := []string{"az", "network", "bastion", "ssh", "--username", "O'Brien", "--ssh-key", `folder\file`}
+	want := `az network bastion ssh --username 'O\'Brien' --ssh-key 'folder\\file'`
+	if got := formatCommand(arguments, quoteFish); got != want {
+		t.Fatalf("fish display=%q, want %q", got, want)
+	}
+}
+
+func TestReviewOutputHasNoIndentationAndExecutesOriginalArguments(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "az")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nprintf 'EXECUTED:'\nprintf '<%s>' \"$@\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	values := []string{"network", "bastion", "ssh", "--name", "O'Brien", "--ssh-key", `folder\file`, "--username", "$(not-executed)"}
+	for _, shell := range []string{"/bin/sh", "bash", "zsh", "fish"} {
+		t.Run(shell, func(t *testing.T) {
+			path, err := exec.LookPath(shell)
+			if err != nil {
+				t.Skip("shell not installed")
+			}
+			t.Setenv("SHELL", path)
+			review := ReviewCommand(exec.Command(stub, values...))
+			// Do not load interactive profiles in this deterministic test.
+			review.Args[1] = "-c"
+			review.Stdin = strings.NewReader("\n")
+			output, err := review.CombinedOutput()
+			if err != nil {
+				t.Fatalf("review: %v\n%s", err, output)
+			}
+			quote := quoteShell
+			if filepath.Base(path) == "fish" {
+				quote = quoteFish
+			}
+			expected := "Review this command:\n\n" + formatCommand(append([]string{stub}, values...), quote) + "\n\n"
+			if !strings.HasPrefix(string(output), expected) {
+				t.Fatalf("unexpected review output: %q", output)
+			}
+			if !strings.Contains(string(output), "EXECUTED:<network><bastion><ssh><--name><O'Brien><--ssh-key><folder\\file><--username><$(not-executed)>") {
+				t.Fatalf("arguments not preserved: %q", output)
+			}
+		})
 	}
 }
 

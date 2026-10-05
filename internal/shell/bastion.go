@@ -59,10 +59,11 @@ func ReviewCommand(command *exec.Cmd) *exec.Cmd {
 	var script string
 	arguments := []string{"-ic"}
 	if filepath.Base(shellPath) == "fish" {
-		script = fmt.Sprintf("printf 'Review this command:\\n\\n  %%s\\n\\n' %s; read -P 'Press Enter to run it (Ctrl-C to cancel): '; command $argv", quoteShell(display))
+		display = formatCommand(command.Args, quoteFish)
+		script = fmt.Sprintf("printf 'Review this command:\\n\\n%%s\\n\\n' %s; read -P 'Press Enter to run it (Ctrl-C to cancel): '; command $argv", quoteFish(display))
 		arguments = append(arguments, script)
 	} else {
-		script = fmt.Sprintf("printf 'Review this command:\\n\\n  %%s\\n\\n' %s; printf 'Press Enter to run it (Ctrl-C to cancel): '; IFS= read -r _; exec \"$@\"", quoteShell(display))
+		script = fmt.Sprintf("printf 'Review this command:\\n\\n%%s\\n\\n' %s; printf 'Press Enter to run it (Ctrl-C to cancel): '; IFS= read -r _; exec \"$@\"", quoteShell(display))
 		arguments = append(arguments, script, "azssh-review")
 	}
 	arguments = append(arguments, command.Args...)
@@ -85,11 +86,44 @@ func ReplaceWithReviewShell(arguments []string) error {
 }
 
 func quoteCommand(arguments []string) string {
+	return formatCommand(arguments, quoteShell)
+}
+
+func formatCommand(arguments []string, quote func(string) string) string {
 	quoted := make([]string, len(arguments))
+	commandWords, expectValue := true, false
 	for index, argument := range arguments {
-		quoted[index] = quoteShell(argument)
+		switch {
+		case expectValue:
+			quoted[index], expectValue = quote(argument), false
+		case strings.HasPrefix(argument, "--") && literalShellWord(argument):
+			quoted[index], commandWords, expectValue = argument, false, true
+		case commandWords && literalShellWord(argument):
+			quoted[index] = argument
+		default:
+			quoted[index], commandWords = quote(argument), false
+		}
 	}
 	return strings.Join(quoted, " ")
+}
+
+// Only command/flag tokens with no shell syntax can be displayed bare.
+func literalShellWord(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || strings.ContainsRune("_-/.", char) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func quoteFish(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	return "'" + strings.ReplaceAll(value, "'", "\\'") + "'"
 }
 
 func quoteShell(value string) string {
