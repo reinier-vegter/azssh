@@ -66,7 +66,7 @@ Install a standalone binary from the [latest release](https://github.com/reinier
 ```sh
 sudo mkdir -p /usr/local/bin
 test ! -L /usr/local/bin/azssh
-curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_linux_amd64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.3/azssh_v0.1.3_linux_amd64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
 **ARM 64-bit (`aarch64` / `arm64`):**
@@ -74,7 +74,7 @@ curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azs
 ```sh
 sudo mkdir -p /usr/local/bin
 test ! -L /usr/local/bin/azssh
-curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_linux_arm64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.3/azssh_v0.1.3_linux_arm64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
 ### macOS (Darwin)
@@ -84,7 +84,7 @@ curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azs
 ```sh
 sudo mkdir -p /usr/local/bin
 test ! -L /usr/local/bin/azssh
-curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_darwin_amd64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.3/azssh_v0.1.3_darwin_amd64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
 **Apple Silicon Mac (M-series):**
@@ -92,7 +92,7 @@ curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azs
 ```sh
 sudo mkdir -p /usr/local/bin
 test ! -L /usr/local/bin/azssh
-curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_darwin_arm64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.3/azssh_v0.1.3_darwin_arm64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
 After installing, verify the shell resolves the intended binary:
