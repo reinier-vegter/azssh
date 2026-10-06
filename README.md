@@ -171,9 +171,14 @@ Directory mounts are also available only with Entra ID. Press `m`, choose a
 remote directory (default `.` for the remote home), and azssh mounts it at
 `~/azssh/mnt/<vm-name>`. SSHFS remains in the foreground until it exits or you
 press Ctrl-C; azssh then unmounts before removing its temporary identity and
-tunnel. It prints the exact mountpoint when SSHFS starts. The empty mountpoint
+tunnel. It prints the exact mountpoint as SSHFS starts, without claiming mount
+readiness. The empty mountpoint
 directory remains for later use with mode `0500` to discourage accidental local
-writes while unmounted; this does not make the remote filesystem read-only.
+writes while idle. azssh temporarily enables owner write access (`0700`) for
+FUSE mounting and restores `0500` after the attempt ends and the path is confirmed
+unmounted; this does not make the remote filesystem read-only. Cleanup failures
+are reported. A crash or uncatchable termination may leave the local directory
+writable until a later mount attempt prepares it again.
 azssh never installs SSHFS or FUSE and never uses `sudo`; install the platform runtime
 through your normal system process first. The mount uses `-F /dev/null` and
 explicit temporary SSH options, so it does not read or modify `~/.ssh`.

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,11 @@ import (
 	"syscall"
 
 	"azssh/internal/inventory"
+)
+
+const (
+	idleMountpointMode   = 0o500
+	activeMountpointMode = 0o700
 )
 
 // StartMount creates a foreground SSHFS mount through the selected Bastion.
@@ -41,7 +47,9 @@ func StartMount(route inventory.BastionRoute, vm inventory.VirtualMachine, remot
 		return err
 	}
 	defer session.Close()
-	return runSSHFS(session.username, remotePath, mountpoint, session.keyPath, session.certificatePath, session.port)
+	return withWritableMountpoint(mountpoint, isMountpoint, func() error {
+		return runSSHFS(session.username, remotePath, mountpoint, session.keyPath, session.certificatePath, session.port)
+	})
 }
 
 func usesAAD(authentication Authentication) bool {
@@ -68,7 +76,7 @@ func mountpointForVM(vmName string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(mountpoint), 0o700); err != nil {
 		return "", fmt.Errorf("create mountpoint parent: %w", err)
 	}
-	if err := os.Mkdir(mountpoint, 0o500); err != nil && !os.IsExist(err) {
+	if err := os.Mkdir(mountpoint, idleMountpointMode); err != nil && !os.IsExist(err) {
 		return "", fmt.Errorf("create mountpoint: %w", err)
 	}
 	info, err := os.Stat(mountpoint)
@@ -90,10 +98,33 @@ func mountpointForVM(vmName string) (string, error) {
 	if len(entries) != 0 {
 		return "", fmt.Errorf("mountpoint is not empty: %s", mountpoint)
 	}
-	if err := os.Chmod(mountpoint, 0o500); err != nil {
+	if err := os.Chmod(mountpoint, idleMountpointMode); err != nil {
 		return "", fmt.Errorf("set mountpoint permissions: %w", err)
 	}
 	return mountpoint, nil
+}
+
+// withWritableMountpoint grants FUSE write access only for the mount attempt.
+// Never restore permissions through a mounted path: that would chmod the remote root.
+func withWritableMountpoint(path string, mounted func(string) (bool, error), run func() error) (err error) {
+	if active, inspectErr := mounted(path); inspectErr != nil {
+		return inspectErr
+	} else if active {
+		return fmt.Errorf("mountpoint is already mounted: %s", path)
+	}
+	defer func() {
+		if active, inspectErr := mounted(path); inspectErr != nil {
+			err = errors.Join(err, fmt.Errorf("restore mountpoint permissions: %w", inspectErr))
+		} else if active {
+			err = errors.Join(err, fmt.Errorf("cannot restore mountpoint permissions while still mounted: %s", path))
+		} else if chmodErr := os.Chmod(path, idleMountpointMode); chmodErr != nil {
+			err = errors.Join(err, fmt.Errorf("restore mountpoint permissions: %w", chmodErr))
+		}
+	}()
+	if err := os.Chmod(path, activeMountpointMode); err != nil {
+		return fmt.Errorf("enable mountpoint write access: %w", err)
+	}
+	return run()
 }
 
 func isMountpoint(path string) (bool, error) {
@@ -149,7 +180,7 @@ func runSSHFS(username, remotePath, mountpoint, keyPath, certificatePath string,
 }
 
 func mountStartedMessage(mountpoint string) string {
-	return "SSHFS mounted at " + mountpoint + ". Press Ctrl-C to unmount."
+	return "Starting SSHFS at " + mountpoint + ". Press Ctrl-C to unmount."
 }
 
 func sshfsArgs(username, remotePath, mountpoint, keyPath, certificatePath string, port int) []string {

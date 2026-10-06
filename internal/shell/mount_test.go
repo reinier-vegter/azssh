@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -99,7 +100,131 @@ func TestSSHFSArgsUseOnlyTemporaryConnectionSettings(t *testing.T) {
 }
 
 func TestMountStartedMessageIncludesMountpoint(t *testing.T) {
-	if got, want := mountStartedMessage("/home/user/azssh/mnt/api-01"), "SSHFS mounted at /home/user/azssh/mnt/api-01. Press Ctrl-C to unmount."; got != want {
+	if got, want := mountStartedMessage("/home/user/azssh/mnt/api-01"), "Starting SSHFS at /home/user/azssh/mnt/api-01. Press Ctrl-C to unmount."; got != want {
 		t.Fatalf("mountStartedMessage() = %q, want %q", got, want)
+	}
+}
+
+func TestWritableMountpointRestoresIdleMode(t *testing.T) {
+	startupErr := errors.New("SSHFS startup failed")
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "success"},
+		{name: "startup failure", err: startupErr},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			path, err := mountpointForVM("api-01")
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertMountpointMode(t, path, 0o500)
+			err = withWritableMountpoint(path, isMountpoint, func() error {
+				assertMountpointMode(t, path, 0o700)
+				assertMountpointMode(t, filepath.Dir(path), 0o700)
+				return test.err
+			})
+			if !errors.Is(err, test.err) {
+				t.Fatalf("mount error = %v, want %v", err, test.err)
+			}
+			assertMountpointMode(t, path, 0o500)
+		})
+	}
+}
+
+func TestWritableMountpointSkipsUnsafeRestoration(t *testing.T) {
+	inspectErr := errors.New("mount status unavailable")
+	runErr := errors.New("SSHFS failed")
+	for _, test := range []struct {
+		name        string
+		active      bool
+		inspectErr  error
+		wantMessage string
+	}{
+		{name: "still mounted", active: true, wantMessage: "still mounted"},
+		{name: "unknown status", inspectErr: inspectErr, wantMessage: "mount status unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			path, err := mountpointForVM("api-01")
+			if err != nil {
+				t.Fatal(err)
+			}
+			finished := false
+			err = withWritableMountpoint(path, func(string) (bool, error) {
+				if !finished {
+					return false, nil
+				}
+				return test.active, test.inspectErr
+			}, func() error {
+				finished = true
+				return runErr
+			})
+			if !errors.Is(err, runErr) || !strings.Contains(err.Error(), test.wantMessage) {
+				t.Fatalf("mount error = %v", err)
+			}
+			if test.inspectErr != nil && !errors.Is(err, test.inspectErr) {
+				t.Fatalf("inspection error lost: %v", err)
+			}
+			assertMountpointMode(t, path, 0o700)
+		})
+	}
+}
+
+func TestWritableMountpointReportsRestorationFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mount")
+	if err := os.Mkdir(path, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	runErr := errors.New("SSHFS failed")
+	err := withWritableMountpoint(path, func(string) (bool, error) { return false, nil }, func() error {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		return runErr
+	})
+	if !errors.Is(err, runErr) || !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "restore mountpoint permissions") {
+		t.Fatalf("mount error = %v", err)
+	}
+}
+
+func TestWritableMountpointRejectsUnsafeActivation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		active bool
+		err    error
+	}{
+		{name: "already mounted", active: true},
+		{name: "unknown status", err: errors.New("inspection failed")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "mount")
+			if err := os.Mkdir(path, 0o500); err != nil {
+				t.Fatal(err)
+			}
+			err := withWritableMountpoint(path, func(string) (bool, error) {
+				return test.active, test.err
+			}, func() error {
+				t.Fatal("SSHFS must not start")
+				return nil
+			})
+			if err == nil {
+				t.Fatal("expected activation error")
+			}
+			assertMountpointMode(t, path, 0o500)
+		})
+	}
+}
+
+func TestWritableMountpointDoesNotRunWhenChmodFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing")
+	err := withWritableMountpoint(path, func(string) (bool, error) { return false, nil }, func() error {
+		t.Fatal("SSHFS must not start")
+		return nil
+	})
+	if !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "enable mountpoint write access") {
+		t.Fatalf("mount error = %v", err)
 	}
 }
