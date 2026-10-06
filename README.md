@@ -57,42 +57,42 @@ confirm that your user can access `/dev/fuse` before mounting.
 
 ## Installation
 
-Install a standalone binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest) into `/usr/local/bin`. Choose the archive for your operating system and architecture, then run its commands from the download directory. Only the final installation requires sudo; run azssh normally without sudo.
+Install a standalone binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest) into `/usr/local/bin`. Choose the command for your operating system and architecture. It downloads, decompresses, and installs the binary in one step. Directory setup and installation require sudo; run azssh normally without sudo.
 
 ### Linux
 
-**Intel/AMD 64-bit (`x86_64`):** download [azssh_v0.1.2_linux_amd64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.2_linux_amd64.gz).
+**Intel/AMD 64-bit (`x86_64`):**
 
 ```sh
-gunzip azssh_v0.1.2_linux_amd64.gz
 sudo mkdir -p /usr/local/bin
-sudo install -m 0755 azssh_v0.1.2_linux_amd64 /usr/local/bin/azssh
+test ! -L /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_linux_amd64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
-**ARM 64-bit (`aarch64` / `arm64`):** download [azssh_v0.1.2_linux_arm64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.2_linux_arm64.gz).
+**ARM 64-bit (`aarch64` / `arm64`):**
 
 ```sh
-gunzip azssh_v0.1.2_<os>_<arch>.gz
-chmod +x azssh_v0.1.2_<os>_<arch>
-sudo install -m 0755 azssh_v0.1.2_<os>_<arch> /usr/local/bin/azssh
+sudo mkdir -p /usr/local/bin
+test ! -L /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_linux_arm64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
 ### macOS (Darwin)
 
-**Intel Mac:** download [azssh_v0.1.2_darwin_amd64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.2_darwin_amd64.gz).
+**Intel Mac:**
 
 ```sh
-gunzip azssh_v0.1.2_darwin_amd64.gz
 sudo mkdir -p /usr/local/bin
-sudo install -m 0755 azssh_v0.1.2_darwin_amd64 /usr/local/bin/azssh
+test ! -L /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_darwin_amd64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
-**Apple Silicon Mac (M-series):** download [azssh_v0.1.2_darwin_arm64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.2_darwin_arm64.gz).
+**Apple Silicon Mac (M-series):**
 
 ```sh
-gunzip azssh_v0.1.2_darwin_arm64.gz
 sudo mkdir -p /usr/local/bin
-sudo install -m 0755 azssh_v0.1.2_darwin_arm64 /usr/local/bin/azssh
+test ! -L /usr/local/bin/azssh
+curl -fsSL 'https://github.com/reinier-vegter/azssh/releases/download/v0.1.2/azssh_v0.1.2_darwin_arm64.gz' | gunzip | sudo install -m 0755 /dev/stdin /usr/local/bin/azssh
 ```
 
 After installing, verify the shell resolves the intended binary:

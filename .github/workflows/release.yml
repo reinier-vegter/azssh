@@ -45,7 +45,7 @@ jobs:
         run: |
           git fetch origin main
           git checkout main
-          perl -0pi -e 's/azssh_v(?:<[^>]+>|[^_[:space:]]+)/"azssh_$ENV{VERSION}"/ge' README.md
+          ./scripts/update-readme-release-version.sh "$VERSION"
           if git diff --quiet -- README.md; then
             exit 0
           fi
