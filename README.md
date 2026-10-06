@@ -64,30 +64,17 @@ Install a standalone binary from the [latest release](https://github.com/reinier
 **Intel/AMD 64-bit (`x86_64`):** download [azssh_v0.1.0_linux_amd64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.0_linux_amd64.gz).
 
 ```sh
-<<<<<<< HEAD
-
-mkdir -p "$HOME/.local/bin"
-install -m 0755 azssh_v0.1.1_<os>_<arch> "$HOME/.local/bin/azssh"
-export PATH="$HOME/.local/bin:$PATH"
-=======
 gunzip azssh_v0.1.0_linux_amd64.gz
 sudo mkdir -p /usr/local/bin
 sudo install -m 0755 azssh_v0.1.0_linux_amd64 /usr/local/bin/azssh
->>>>>>> f9c3f7e (updater + readme)
 ```
 
 **ARM 64-bit (`aarch64` / `arm64`):** download [azssh_v0.1.0_linux_arm64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.0_linux_arm64.gz).
 
 ```sh
-<<<<<<< HEAD
 gunzip azssh_v0.1.1_<os>_<arch>.gz
 chmod +x azssh_v0.1.1_<os>_<arch>
 sudo install -m 0755 azssh_v0.1.1_<os>_<arch> /usr/local/bin/azssh
-=======
-gunzip azssh_v0.1.0_linux_arm64.gz
-sudo mkdir -p /usr/local/bin
-sudo install -m 0755 azssh_v0.1.0_linux_arm64 /usr/local/bin/azssh
->>>>>>> f9c3f7e (updater + readme)
 ```
 
 ### macOS (Darwin)
@@ -114,16 +101,6 @@ After installing, verify the shell resolves the intended binary:
 command -v azssh
 azssh --version
 ```
-
-The command should resolve to `/usr/local/bin/azssh` and report `v0.1.0`. If it does not, put `/usr/local/bin` first on PATH, persist that setting in the appropriate shell startup file, run `hash -r` in Bash, and check again.
-
-### Update
-
-When a newer release is available, press `U` outside text input, review the
-in-place `/usr/local/bin/azssh` destination, and confirm. A protected standalone
-installation may prompt for administrator authorization through the system
-terminal; azssh never collects passwords. Restart azssh after a successful
-update. Unsupported installations receive manual installation guidance.
 
 ## Usage
 
