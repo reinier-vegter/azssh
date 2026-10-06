@@ -20,20 +20,19 @@ func TestSelfUpdateChoices(t *testing.T) {
 		sudo        bool
 	}{
 		{"writable", true, 0, "/current/azssh", false},
-		{"local migration", false, 0, "/home/user/.local/bin/azssh", false},
-		{"system", false, 1, "/current/azssh", true},
+		{"protected", false, 0, "/current/azssh", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := Model{activeView: selfUpdateView, availableUpdate: "v1.2.3", updatePhase: "confirm", updateIndex: tc.index,
-				installation: release.Installation{Current: "/current/azssh", Local: "/home/user/.local/bin/azssh", Writable: tc.writable}}
+				installation: release.Installation{Current: "/current/azssh", Supported: true, Writable: tc.writable}}
 			updated, cmd := m.updateSelfUpdate(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 			result := updated.(Model)
 			defer result.updateCancel()
 			if cmd == nil || result.updatePhase != "downloading" || result.updateDestination != tc.destination || result.updateSudo != tc.sudo {
 				t.Fatalf("unexpected choice: %+v", result)
 			}
-			if !tc.writable && !strings.Contains(m.selfUpdateScreen(), "recommended") {
-				t.Fatal("missing migration proposal")
+			if strings.Contains(m.selfUpdateScreen(), "Install for my user") {
+				t.Fatal("offered user-local migration")
 			}
 		})
 	}
@@ -99,28 +98,28 @@ func TestUppercaseUpdateKeyAndCancelChoice(t *testing.T) {
 	if cmd == nil || updated.(Model).activeView != selfUpdateView {
 		t.Fatal("U did not open update")
 	}
-	m = Model{activeView: selfUpdateView, updatePhase: "confirm", updateIndex: 2}
+	m = Model{activeView: selfUpdateView, updatePhase: "confirm", updateIndex: 1}
 	updated, cmd = m.updateSelfUpdate(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd != nil || updated.(Model).activeView != mainView {
 		t.Fatal("cancel choice started work")
 	}
 }
 
-func TestMigrationCompletionIncludesGuidance(t *testing.T) {
+func TestSystemCompletionIncludesGuidance(t *testing.T) {
 	t.Setenv("PATH", "")
-	m := Model{updatePhase: "installing", updateDestination: "/home/user/.local/bin/azssh", availableUpdate: "v1.2.3",
-		installation: release.Installation{Current: "/usr/local/bin/azssh", Local: "/home/user/.local/bin/azssh"}}
+	m := Model{updatePhase: "installing", updateDestination: "/usr/local/bin/azssh", availableUpdate: "v1.2.3",
+		installation: release.Installation{Current: "/usr/local/bin/azssh", Supported: true}}
 	updated, _ := m.handleUpdateInstalled(updateInstalledMsg{})
 	text := updated.(Model).updateText
-	if !strings.Contains(text, "Put $HOME/.local/bin first") || !strings.Contains(text, "old system copy remains") {
-		t.Fatalf("missing migration guidance: %s", text)
+	if !strings.Contains(text, "Put /usr/local/bin first") || strings.Contains(text, "old system copy") {
+		t.Fatalf("missing system guidance: %s", text)
 	}
 }
 
 func TestUpdateConfirmationOmitsPackageManagerAdvice(t *testing.T) {
 	for _, writable := range []bool{true, false} {
 		m := Model{updatePhase: "confirm", installation: release.Installation{
-			Current: "/usr/local/bin/azssh", Local: "/home/user/.local/bin/azssh", Writable: writable,
+			Current: "/usr/local/bin/azssh", Supported: true, Writable: writable,
 		}}
 		view := m.selfUpdateScreen()
 		if strings.Contains(view, "package manager") || strings.Contains(view, "Standalone releases only") {
@@ -129,5 +128,14 @@ func TestUpdateConfirmationOmitsPackageManagerAdvice(t *testing.T) {
 		if !strings.Contains(view, "Release details") {
 			t.Fatal("release details were removed along with the disclaimer")
 		}
+	}
+}
+
+func TestUnsupportedInstallationShowsManualGuidance(t *testing.T) {
+	m := Model{updatePhase: "inspecting", updateGeneration: 1}
+	updated, _ := m.handleInstallationInspected(installationInspectedMsg{generation: 1, installation: release.Installation{Current: "/tmp/azssh"}})
+	result := updated.(Model)
+	if result.updatePhase != "failed" || !strings.Contains(result.updateText, "/usr/local/bin/azssh") {
+		t.Fatalf("unsupported installation result: %+v", result)
 	}
 }

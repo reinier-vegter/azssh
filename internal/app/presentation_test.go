@@ -185,7 +185,7 @@ func TestSecondaryScreensFitAndKeepControls(t *testing.T) {
 			m := finderFixture()
 			m.width, m.height, m.activeView = size[0], size[1], active
 			m.updatePhase = "confirm"
-			m.installation = release.Installation{Current: "/usr/local/bin/azssh", Local: "/home/user/.local/bin/azssh"}
+			m.installation = release.Installation{Current: "/usr/local/bin/azssh", Supported: true}
 			m.routeTarget = &m.targets[0]
 			m.filterDraft = map[string]bool{}
 			view := m.View().Content

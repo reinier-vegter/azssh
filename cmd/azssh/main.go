@@ -9,6 +9,7 @@ import (
 	"azssh/internal/app"
 	"azssh/internal/azure"
 	"azssh/internal/cache"
+	"azssh/internal/release"
 	"azssh/internal/shell"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,6 +18,10 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--azssh-install" {
+		runInstaller()
+		return
+	}
 	showVersion := flag.Bool("version", false, "print version and exit")
 	authType := flag.String("auth-type", "AAD", "Bastion SSH authentication type (AAD, ssh-key, or password)")
 	username := flag.String("username", "", "SSH username for ssh-key or password authentication")
@@ -73,6 +78,18 @@ func main() {
 				exitf("could not open the command review shell: %v", err)
 			}
 		}
+	}
+}
+
+func runInstaller() {
+	flags := flag.NewFlagSet("azssh-install", flag.ExitOnError)
+	destination := flags.String("destination", "", "")
+	expected := flags.String("expected-sha256", "", "")
+	payload := flags.String("payload-sha256", "", "")
+	size := flags.Int64("payload-size", 0, "")
+	_ = flags.Parse(os.Args[2:])
+	if err := release.RunInstaller(*destination, *expected, *payload, *size, os.Stdin); err != nil {
+		exitf("privileged installation failed: %v", err)
 	}
 }
 

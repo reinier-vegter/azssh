@@ -55,30 +55,75 @@ On macOS, download and run the SSHFS `.pkg` from the release page after
 installing macFUSE. Approve macFUSE in System Settings if prompted. On Linux,
 confirm that your user can access `/dev/fuse` before mounting.
 
-## Install
+## Installation
 
-Download the OS- and architecture-appropriate `.gz` binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest), then decompress and install it.
+Install a standalone binary from the [latest release](https://github.com/reinier-vegter/azssh/releases/latest) into `/usr/local/bin`. Choose the archive for your operating system and architecture, then run its commands from the download directory. Only the final installation requires sudo; run azssh normally without sudo.
 
+### Linux
 
-For installation and future TUI updates without sudo, use a user-local location
-instead of the `sudo install` command:
+**Intel/AMD 64-bit (`x86_64`):** download [azssh_v0.1.0_linux_amd64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.0_linux_amd64.gz).
 
 ```sh
+<<<<<<< HEAD
 
 mkdir -p "$HOME/.local/bin"
 install -m 0755 azssh_v0.1.1_<os>_<arch> "$HOME/.local/bin/azssh"
 export PATH="$HOME/.local/bin:$PATH"
+=======
+gunzip azssh_v0.1.0_linux_amd64.gz
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 azssh_v0.1.0_linux_amd64 /usr/local/bin/azssh
+>>>>>>> f9c3f7e (updater + readme)
 ```
 
-For installation in the global system path, use the following commands:
+**ARM 64-bit (`aarch64` / `arm64`):** download [azssh_v0.1.0_linux_arm64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.0_linux_arm64.gz).
+
 ```sh
+<<<<<<< HEAD
 gunzip azssh_v0.1.1_<os>_<arch>.gz
 chmod +x azssh_v0.1.1_<os>_<arch>
 sudo install -m 0755 azssh_v0.1.1_<os>_<arch> /usr/local/bin/azssh
+=======
+gunzip azssh_v0.1.0_linux_arm64.gz
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 azssh_v0.1.0_linux_arm64 /usr/local/bin/azssh
+>>>>>>> f9c3f7e (updater + readme)
 ```
-Note this breaks automatic updating from the TUI; use a user-local installation for that feature.
 
-Persist the PATH setting in your shell profile if needed.
+### macOS (Darwin)
+
+**Intel Mac:** download [azssh_v0.1.0_darwin_amd64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.0_darwin_amd64.gz).
+
+```sh
+gunzip azssh_v0.1.0_darwin_amd64.gz
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 azssh_v0.1.0_darwin_amd64 /usr/local/bin/azssh
+```
+
+**Apple Silicon Mac (M-series):** download [azssh_v0.1.0_darwin_arm64.gz](https://github.com/reinier-vegter/azssh/releases/download/v0.1.0/azssh_v0.1.0_darwin_arm64.gz).
+
+```sh
+gunzip azssh_v0.1.0_darwin_arm64.gz
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 azssh_v0.1.0_darwin_arm64 /usr/local/bin/azssh
+```
+
+After installing, verify the shell resolves the intended binary:
+
+```sh
+command -v azssh
+azssh --version
+```
+
+The command should resolve to `/usr/local/bin/azssh` and report `v0.1.0`. If it does not, put `/usr/local/bin` first on PATH, persist that setting in the appropriate shell startup file, run `hash -r` in Bash, and check again.
+
+### Update
+
+When a newer release is available, press `U` outside text input, review the
+in-place `/usr/local/bin/azssh` destination, and confirm. A protected standalone
+installation may prompt for administrator authorization through the system
+terminal; azssh never collects passwords. Restart azssh after a successful
+update. Unsupported installations receive manual installation guidance.
 
 ## Usage
 
@@ -119,31 +164,6 @@ long details scroll while controls stay visible. Network names are shown by
 default, with parent context for ambiguous names. Press `d` to inspect full IDs.
 Changing VM selection resets detail expansion and scrolling; Help preserves them.
 Printable shortcut keys remain text while editing search or the remote path.
-
-### Update from the TUI
-
-When the header shows a newer version and `U: update`, press `U` outside search
-and confirm the update. The notice appears only in the main finder; release
-details are available in the update screen. Downloading, verification, and
-installation are shown as separate stages.
-Writable standalone installations update in place. Protected installations offer
-installation in `~/.local/bin/azssh` (recommended), an explicitly selected system
-update using sudo, or cancel. The sudo password prompt runs directly in the
-terminal while the TUI is suspended; azssh never reads or stores the password.
-Only installation is elevated, not downloads or the application.
-
-The updater verifies the platform-specific gzip against the release's
-`SHA256SUMS`, then replaces the executable atomically. Checksums detect corruption
-but share the release's GitHub trust boundary. Download or installation failures
-leave the old executable unchanged. Escape cancels downloading or verification. Restart azssh
-after success to run the new version.
-
-User-local migration leaves the old system copy untouched and reports whether
-PATH selects the local copy. Follow the displayed PATH guidance and reset your
-shell's command cache if needed (`hash -r` in Bash). Shell profiles are never
-modified automatically. After checking the new installation, you can manually
-remove the old standalone system copy. GitHub Releases is currently the only
-azssh distribution channel.
 
 ## Cache and Security
 

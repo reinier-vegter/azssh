@@ -14,38 +14,54 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 )
 
 const releaseDownloadURL = "https://github.com/reinier-vegter/azssh/releases/download"
 const maxAssetSize = 64 << 20
 const maxBinarySize = 128 << 20
 
-// Installation describes the running standalone binary and the local alternative.
+// SystemDestination is the supported standalone installation target.
+const SystemDestination = "/usr/local/bin/azssh"
+
+// Installation describes the inspected standalone executable.
 type Installation struct {
-	Current  string
-	Local    string
-	Writable bool
+	Current        string
+	Writable       bool
+	Supported      bool
+	ExpectedSHA256 string
 }
 
-// InspectInstallation resolves symlinks and checks directory replacement access.
+// InspectInstallation resolves the running executable and accepts only the
+// supported system-wide standalone destination.
 func InspectInstallation() (Installation, error) {
+	if os.Geteuid() == 0 {
+		return Installation{}, fmt.Errorf("do not run azssh as root")
+	}
 	current, err := os.Executable()
 	if err != nil {
 		return Installation{}, err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Installation{}, err
-	}
-	return inspectInstallation(current, home)
+	return inspectInstallation(current)
 }
 
-func inspectInstallation(current, home string) (Installation, error) {
+func inspectInstallation(current string) (Installation, error) {
 	current, err := filepath.EvalSymlinks(current)
 	if err != nil {
 		return Installation{}, err
 	}
-	installation := Installation{Current: current, Local: filepath.Join(home, ".local", "bin", "azssh")}
+	installation := Installation{Current: current, Supported: current == SystemDestination}
+	if !installation.Supported {
+		return installation, nil
+	}
+	if err := safeSystemTarget(current); err != nil {
+		return Installation{}, err
+	}
+	digest, err := fileSHA256(current)
+	if err != nil {
+		return Installation{}, err
+	}
+	installation.ExpectedSHA256 = digest
 	probe, err := os.CreateTemp(filepath.Dir(current), ".azssh-write-check-*")
 	if err == nil {
 		probe.Close()
@@ -57,8 +73,41 @@ func inspectInstallation(current, home string) (Installation, error) {
 	return installation, nil
 }
 
+func safeSystemTarget(destination string) error {
+	if destination != SystemDestination {
+		return fmt.Errorf("unsupported installation location %s", destination)
+	}
+	info, err := os.Lstat(destination)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("refusing non-regular or symlink destination %s", destination)
+	}
+	if !ownedByRoot(info) {
+		return fmt.Errorf("unsupported installation ownership for %s", destination)
+	}
+	for dir := filepath.Dir(destination); ; dir = filepath.Dir(dir) {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || !ownedByRoot(info) || info.Mode().Perm()&0022 != 0 {
+			return fmt.Errorf("unsafe installation directory %s", dir)
+		}
+		if dir == "/" {
+			break
+		}
+	}
+	return nil
+}
+
+func ownedByRoot(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == 0
+}
+
 // Download verifies a release's compressed asset before extracting its binary.
-// Callers provide a deadline and must explicitly confirm installation separately.
 func Download(ctx context.Context, version string) ([]byte, error) {
 	artifact, err := Fetch(ctx, version)
 	if err != nil {
@@ -67,13 +116,11 @@ func Download(ctx context.Context, version string) ([]byte, error) {
 	return Verify(artifact)
 }
 
-// Artifact keeps fetched data opaque until its integrity has been verified.
 type Artifact struct {
 	name            string
 	manifest, asset []byte
 }
 
-// Fetch downloads assets without installing or executing anything.
 func Fetch(ctx context.Context, version string) (Artifact, error) {
 	client := &http.Client{CheckRedirect: func(request *http.Request, via []*http.Request) error {
 		if request.URL.Scheme != "https" {
@@ -115,32 +162,30 @@ func fetchArtifact(ctx context.Context, client *http.Client, base, version, goos
 	return Artifact{name: name, manifest: manifest, asset: asset}, nil
 }
 
-// Verify validates the checksum and extracts bounded executable bytes.
 func Verify(artifact Artifact) ([]byte, error) {
-	name, manifest, asset := artifact.name, artifact.manifest, artifact.asset
-	var err error
 	var expected []byte
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for _, line := range strings.Split(string(artifact.manifest), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != name {
+		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != artifact.name {
 			continue
 		}
 		if expected != nil {
-			return nil, fmt.Errorf("duplicate checksum for %s", name)
+			return nil, fmt.Errorf("duplicate checksum for %s", artifact.name)
 		}
+		var err error
 		expected, err = hex.DecodeString(fields[0])
 		if err != nil || len(expected) != sha256.Size {
-			return nil, fmt.Errorf("invalid checksum for %s", name)
+			return nil, fmt.Errorf("invalid checksum for %s", artifact.name)
 		}
 	}
 	if expected == nil {
-		return nil, fmt.Errorf("checksum missing for %s", name)
+		return nil, fmt.Errorf("checksum missing for %s", artifact.name)
 	}
-	actual := sha256.Sum256(asset)
+	actual := sha256.Sum256(artifact.asset)
 	if !bytes.Equal(actual[:], expected) {
-		return nil, fmt.Errorf("checksum mismatch for %s", name)
+		return nil, fmt.Errorf("checksum mismatch for %s", artifact.name)
 	}
-	reader, err := gzip.NewReader(bytes.NewReader(asset))
+	reader, err := gzip.NewReader(bytes.NewReader(artifact.asset))
 	if err != nil {
 		return nil, fmt.Errorf("open gzip: %w", err)
 	}
@@ -183,7 +228,8 @@ func readBounded(reader io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-// Install atomically replaces a regular standalone executable with verified bytes.
+// Install atomically replaces a regular executable. It is retained for
+// unprivileged test fixtures; updater paths use InstallVerified.
 func Install(destination string, binary []byte) error {
 	if !filepath.IsAbs(destination) || len(binary) == 0 {
 		return fmt.Errorf("installation requires an absolute path and non-empty binary")
@@ -191,8 +237,34 @@ func Install(destination string, binary []byte) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
 		return err
 	}
-	if err := checkDestination(destination); err != nil {
+	if info, err := os.Lstat(destination); err == nil && !info.Mode().IsRegular() {
+		return fmt.Errorf("refusing to replace non-regular or symlink destination %s", destination)
+	} else if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	return replace(destination, "", sha256Hex(binary), int64(len(binary)), bytes.NewReader(binary), false)
+}
+
+// InstallVerified revalidates the original target and verified payload before
+// atomically replacing the supported system executable.
+func InstallVerified(destination, expectedTarget, payloadDigest string, payloadSize int64, input io.Reader) error {
+	if err := safeSystemTarget(destination); err != nil {
+		return err
+	}
+	if actual, err := fileSHA256(destination); err != nil || actual != expectedTarget {
+		return fmt.Errorf("installation target changed; review the update again")
+	}
+	return replace(destination, expectedTarget, payloadDigest, payloadSize, input, true)
+}
+
+func replace(destination, expectedTarget, payloadDigest string, payloadSize int64, input io.Reader, system bool) error {
+	if payloadSize <= 0 || payloadSize > maxBinarySize || len(payloadDigest) != sha256.Size*2 {
+		return fmt.Errorf("invalid verified installation payload")
+	}
+	if expectedTarget != "" {
+		if actual, err := fileSHA256(destination); err != nil || actual != expectedTarget {
+			return fmt.Errorf("installation target changed; review the update again")
+		}
 	}
 	file, err := os.CreateTemp(filepath.Dir(destination), ".azssh-update-*")
 	if err != nil {
@@ -200,11 +272,24 @@ func Install(destination string, binary []byte) error {
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
-	if _, err = file.Write(binary); err != nil {
+	hash := sha256.New()
+	written, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(input, payloadSize+1))
+	if err != nil {
 		return err
+	}
+	if written != payloadSize {
+		return fmt.Errorf("installer received an unexpected payload length")
+	}
+	if hex.EncodeToString(hash.Sum(nil)) != payloadDigest {
+		return fmt.Errorf("installer payload digest mismatch")
 	}
 	if err = file.Chmod(0755); err != nil {
 		return err
+	}
+	if system {
+		if err = file.Chown(0, 0); err != nil {
+			return err
+		}
 	}
 	if err = file.Sync(); err != nil {
 		return err
@@ -212,61 +297,61 @@ func Install(destination string, binary []byte) error {
 	if err = file.Close(); err != nil {
 		return err
 	}
-	if err = checkDestination(destination); err != nil {
-		return err
+	if expectedTarget != "" {
+		if actual, err := fileSHA256(destination); err != nil || actual != expectedTarget {
+			return fmt.Errorf("installation target changed; review the update again")
+		}
 	}
 	return os.Rename(file.Name(), destination)
 }
 
-func checkDestination(destination string) error {
-	info, err := os.Lstat(destination)
-	if os.IsNotExist(err) {
-		return nil
-	}
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("refusing to replace non-regular or symlink destination %s", destination)
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
 	}
-	return nil
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// The script is constant; destination is an argument, never interpolated code.
-// Root reads verified bytes from a pipe, not a mutable user-owned source file.
-const sudoInstallScript = `set -eu
-target=$1
-case "$target" in /*) ;; *) exit 1 ;; esac
-[ ! -L "$target" ] && { [ ! -e "$target" ] || [ -f "$target" ]; }
-tmp=$(/usr/bin/mktemp "${target}.update.XXXXXX")
-trap '/bin/rm -f "$tmp"' EXIT
-trap 'exit 1' HUP INT TERM
-/bin/cat > "$tmp"
-[ -s "$tmp" ]
-/bin/chmod 0755 "$tmp"
-[ ! -L "$target" ] && { [ ! -e "$target" ] || [ -f "$target" ]; }
-/bin/mv -f "$tmp" "$target"
-`
+func sha256Hex(binary []byte) string { sum := sha256.Sum256(binary); return hex.EncodeToString(sum[:]) }
 
-// SudoCommand elevates only atomic installation. sudo prompts through /dev/tty.
-func SudoCommand(destination string, binary []byte) (*exec.Cmd, error) {
-	if !filepath.IsAbs(destination) || len(binary) == 0 {
-		return nil, fmt.Errorf("installation requires an absolute path and non-empty binary")
+// SudoCommand invokes only an already-installed, administrator-controlled
+// executable in its restricted installer mode. Sudo owns terminal input.
+func SudoCommand(installerPath, destination, expectedTarget string, binary []byte) (*exec.Cmd, error) {
+	if installerPath != SystemDestination || destination != SystemDestination || len(binary) == 0 || !validDigest(expectedTarget) {
+		return nil, fmt.Errorf("invalid privileged installation request")
 	}
-	command := exec.Command("sudo", "--", "/bin/sh", "-c", sudoInstallScript, "azssh-install", destination)
+	command := exec.Command("/usr/bin/sudo", "--", installerPath, "--azssh-install", "--destination", destination, "--expected-sha256", expectedTarget, "--payload-sha256", sha256Hex(binary), "--payload-size", fmt.Sprint(len(binary)))
 	command.Stdin = bytes.NewReader(binary)
 	return command, nil
 }
 
-// LocalPathGuidance checks this process's PATH without editing shell profiles.
-func LocalPathGuidance(destination string) string {
+func validDigest(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+// RunInstaller executes the narrow privileged helper mode.
+func RunInstaller(destination, expectedTarget, payloadDigest string, payloadSize int64, input io.Reader) error {
+	return InstallVerified(destination, expectedTarget, payloadDigest, payloadSize, input)
+}
+
+// SystemPathGuidance reports whether the next shell command selects the update.
+func SystemPathGuidance() string {
 	resolved, err := exec.LookPath("azssh")
 	if err == nil {
 		resolved, err = filepath.EvalSymlinks(resolved)
 	}
-	local, localErr := filepath.EvalSymlinks(destination)
-	if err == nil && localErr == nil && resolved == local {
-		return "PATH resolves azssh to the user-local installation. Restart azssh; reset your shell command cache if needed (hash -r in Bash)."
+	if err == nil && resolved == SystemDestination {
+		return "PATH resolves azssh to /usr/local/bin/azssh."
 	}
-	return "PATH does not resolve azssh to the user-local installation. Put $HOME/.local/bin first on PATH (export PATH=\"$HOME/.local/bin:$PATH\"), persist it in your shell profile, and reset your shell command cache (hash -r in Bash). You can also run the installed path directly."
+	return "PATH does not resolve azssh to /usr/local/bin/azssh. Put /usr/local/bin first on PATH and reset your shell command cache (hash -r in Bash)."
 }

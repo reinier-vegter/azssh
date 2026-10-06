@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -145,91 +145,39 @@ func TestInstallAtomicReplacement(t *testing.T) {
 	}
 }
 
-func TestSudoCommandAndScriptWithoutElevation(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "binary with ' quotes ; $chars")
-	command, err := SudoCommand(target, []byte("verified"))
+func TestSudoCommandUsesTrustedInstallerAndVerifiedStdin(t *testing.T) {
+	command, err := SudoCommand(SystemDestination, SystemDestination, strings.Repeat("a", 64), []byte("verified"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command.Args[0] != "sudo" || command.Args[len(command.Args)-1] != target {
+	if command.Args[0] != "/usr/bin/sudo" || !slices.Contains(command.Args, "--azssh-install") || !slices.Contains(command.Args, SystemDestination) {
 		t.Fatalf("args=%q", command.Args)
 	}
 	data, _ := io.ReadAll(command.Stdin)
 	if string(data) != "verified" {
 		t.Fatal("stdin is not verified binary")
 	}
-	// Exercise the actual fixed installation script, but never invoke sudo.
-	cmd := exec.Command("/bin/sh", "-c", sudoInstallScript, "azssh-install", target)
-	cmd.Stdin = bytes.NewReader(data)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("script: %v %s", err, output)
-	}
-	installed, _ := os.ReadFile(target)
-	if string(installed) != "verified" {
-		t.Fatal("script installed wrong bytes")
-	}
-	cmd = exec.Command("/bin/sh", "-c", sudoInstallScript, "azssh-install", target)
-	cmd.Stdin = strings.NewReader("")
-	if err := cmd.Run(); err == nil {
-		t.Fatal("script accepted empty input")
-	}
-	installed, _ = os.ReadFile(target)
-	if string(installed) != "verified" {
-		t.Fatal("script failure changed target")
-	}
-	entries, _ := os.ReadDir(filepath.Dir(target))
-	if len(entries) != 1 {
-		t.Fatal("script temporary file leaked")
-	}
-	if _, err := SudoCommand("relative", []byte("x")); err == nil {
-		t.Fatal("accepted relative destination")
+	if _, err := SudoCommand("relative", SystemDestination, strings.Repeat("a", 64), []byte("x")); err == nil {
+		t.Fatal("accepted untrusted installer")
 	}
 }
 
-func TestLocalPathGuidance(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "azssh")
-	if err := Install(target, []byte("binary")); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-	if !strings.Contains(LocalPathGuidance(target), "PATH resolves") {
-		t.Fatal("local binary not detected")
-	}
+func TestSystemPathGuidance(t *testing.T) {
 	t.Setenv("PATH", "")
-	if !strings.Contains(LocalPathGuidance(target), "Put $HOME/.local/bin first") {
+	if !strings.Contains(SystemPathGuidance(), "Put /usr/local/bin first") {
 		t.Fatal("missing PATH guidance")
 	}
 }
 
-func TestInspectInstallationResolvesSymlinkAndCleansProbe(t *testing.T) {
+func TestInspectInstallationRejectsNonSystemLocations(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "azssh")
 	if err := Install(target, []byte("binary")); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(dir, "azssh-link")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
-	}
-	installation, err := inspectInstallation(link, dir)
-	if err != nil || installation.Current != target || !installation.Writable || installation.Local != filepath.Join(dir, ".local", "bin", "azssh") {
+	installation, err := inspectInstallation(target)
+	if err != nil || installation.Current != target || installation.Supported {
 		t.Fatalf("installation=%+v err=%v", installation, err)
-	}
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != 2 {
-		t.Fatal("write probe leaked")
-	}
-	if os.Geteuid() == 0 {
-		return // Root does not exercise directory permission failures.
-	}
-	if err := os.Chmod(dir, 0555); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chmod(dir, 0755)
-	installation, err = inspectInstallation(target, dir)
-	if err != nil || installation.Writable {
-		t.Fatalf("protected installation=%+v err=%v", installation, err)
 	}
 }
 
